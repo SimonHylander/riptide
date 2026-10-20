@@ -1,7 +1,8 @@
 {
   description = "riptide: real-time host monitoring";
 
-  # Prebuilt bun2nix from the nix-community cache.
+  # Prebuilt bun2nix from the nix-community cache. Nix honours nixConfig only
+  # for the flake being built, so consumers add these to their own config.
   nixConfig = {
     extra-substituters = [ "https://nix-community.cachix.org" ];
     extra-trusted-public-keys = [
@@ -20,13 +21,15 @@
   outputs = { self, nixpkgs, bun2nix }:
     let
       inherit (nixpkgs) lib;
+      # aarch64-darwin only for local builds, the agent itself needs Linux.
       systems = [ "aarch64-darwin" "x86_64-linux" "aarch64-linux" ];
-      forAllSystems = f:
-        lib.genAttrs systems (system:
-          f (import nixpkgs {
-            inherit system;
-            overlays = [ bun2nix.overlays.default ];
-          }));
+      linuxSystems = [ "x86_64-linux" "aarch64-linux" ];
+      pkgsFor = system:
+        import nixpkgs {
+          inherit system;
+          overlays = [ bun2nix.overlays.default ];
+        };
+      forAllSystems = f: lib.genAttrs systems (system: f (pkgsFor system));
     in
     {
       packages = forAllSystems (pkgs: {
@@ -55,8 +58,21 @@
           extraBunBuildFlags = [ "--format=esm" ];
           # The only lifecycle script is our `bun2nix` postinstall.
           dontRunLifecycleScripts = true;
+          meta.mainProgram = "riptide-agent";
         };
       });
+
+      # services.riptide-agent, see nix/module.nix.
+      nixosModules = {
+        agent = import ./nix/module.nix self;
+        default = self.nixosModules.agent;
+      };
+
+      checks = lib.genAttrs linuxSystems (system:
+        import ./nix/checks.nix {
+          inherit self nixpkgs;
+          pkgs = pkgsFor system;
+        });
 
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
