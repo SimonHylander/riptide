@@ -27,16 +27,18 @@ const sample = (at: number, overrides: Partial<Omit<Sample, "at">> = {}): Sample
   ...overrides,
 })
 
-/** Pushes samples in order, returning every flushed row and the final aggregator. */
+/** Pushes samples in order, returning every flushed row, each push's `stale` flag and the final aggregator. */
 const pushAll = (samples: ReadonlyArray<Sample>) => {
   let aggregator = Aggregate.empty
   const rows: Array<AggregateRow> = []
+  const stale: Array<boolean> = []
   for (const s of samples) {
     const result = Aggregate.push(aggregator, "h", s)
     aggregator = result.aggregator
     rows.push(...result.flushed)
+    stale.push(result.stale)
   }
-  return { aggregator, rows }
+  return { aggregator, rows, stale }
 }
 
 /** The open minute bucket as a row. */
@@ -84,6 +86,22 @@ describe("aggregate", () => {
       ["minute", T0 + 59 * minute, 1],
       ["hour", T0, 3],
     ])
+  })
+
+  it("leaves out samples from before the open bucket when the clock moves back", () => {
+    const { aggregator, rows, stale } = pushAll([T0 + 59_000, T0 + minute, T0 + 59_000, T0 + minute].map((t) => sample(t)))
+    assert.deepStrictEqual(stale, [false, false, true, false])
+    // One row for minute 0; the stale sample neither reopened it nor joined minute 1 or the hour.
+    assert.deepStrictEqual(rows.map((r) => [r.resolution, r.at, r.count]), [["minute", T0, 1]])
+    assert.deepStrictEqual([aggregator.minute?.at, aggregator.minute?.count], [T0 + minute, 2])
+    assert.strictEqual(aggregator.hour?.count, 3)
+
+    // Across an hour boundary the sample is older than both open buckets.
+    const hour = 60 * minute
+    const afterHour = pushAll([sample(T0 + hour - 1), sample(T0 + hour)]).aggregator
+    const back = Aggregate.push(afterHour, "h", sample(T0 + hour - 1))
+    assert.isTrue(back.stale)
+    assert.strictEqual(back.aggregator, afterHour)
   })
 
   it("aggregates each keyed entry over the samples that contained it", () => {

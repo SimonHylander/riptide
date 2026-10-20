@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
+import { Effect, Exit, Fiber, Layer, Ref } from "effect"
 import { TestClock } from "effect/testing"
 
 import { FixturePlatform } from "../../src/adapters/fixture/FixtureSources"
 import * as InMemory from "../../src/adapters/memory/InMemoryReportGateway"
 import * as Agent from "../../src/core/Agent"
+import { CpuSource } from "../../src/ports/CpuSource"
 
 const T0 = Date.UTC(2026, 0, 1, 12, 0, 0)
 const minute = 60_000
@@ -72,5 +73,19 @@ describe("Agent", () => {
         ["Rejected", ["minute:0"]],
         ["ok", ["minute:1"]],
       ])
+    }).pipe(Effect.provide(TestLayer)))
+
+  it.effect("fails when sampling dies, instead of waiting for samples forever", () =>
+    Effect.gen(function*() {
+      const reads = yield* Ref.make(0)
+      const cpu = CpuSource.of({
+        latest: Ref.updateAndGet(reads, (n) => n + 1).pipe(
+          Effect.flatMap((n) => n === 2 ? Effect.die("cpu source broke") : Effect.succeed({ totalPct: 10, coresPct: [10] })),
+        ),
+      })
+      const fiber = yield* Agent.run({ host: "fixture" }).pipe(Effect.provideService(CpuSource, cpu), Effect.forkChild)
+      yield* TestClock.adjust("2 seconds")
+      const exit = yield* Effect.exit(Fiber.join(fiber))
+      assert.isTrue(Exit.hasDies(exit))
     }).pipe(Effect.provide(TestLayer)))
 })

@@ -5,7 +5,9 @@
 // source skips that tick, since there is no honest stand-in for those numbers.
 // A failing sensor, disk or GPU source contributes an empty list for that tick,
 // so the rest of the sample still flows and per-key aggregation treats the
-// missing entries as absent. Every failure is logged.
+// missing entries as absent. Every failure is logged. A sample older than the
+// open aggregate buckets (the clock moved back) is still reported but left out
+// of the aggregates, with a warning.
 //
 // Reporting. Each report carries a sample not sent before (the newest one,
 // waiting for the next tick if it was already sent) plus up to
@@ -21,6 +23,10 @@
 // Rows leave the outbox only once a report carrying them succeeds, and the
 // backend upserts rows by (host, at), so a report interrupted mid-flight (for
 // example by SIGTERM) is at worst resent, never half-applied.
+//
+// Sampling and reporting run concurrently. A defect in either ends `run` with
+// that defect instead of leaving the other running alone, so the supervisor
+// (systemd) restarts the agent.
 import {
   type AggregateRow,
   type EpochMillis,
@@ -46,7 +52,10 @@ import * as Outbox from "./outbox"
 export const sampleInterval = Duration.seconds(1)
 /** Most aggregate rows per report. The rest ride on later reports. */
 export const maxRowsPerReport = 120
-/** A report still running after this is abandoned and retried. */
+/**
+ * A report still running after this is abandoned and retried. A backstop: the
+ * gateway adapter should end its own requests before this.
+ */
 export const reportTimeout = Duration.seconds(30)
 
 /** Delay before each retry: 1s, 2s, 4s, ... capped at the idle cadence. Never gives up. */
@@ -90,10 +99,11 @@ export const run = Effect.fnUntraced(function*(options: { readonly host: string 
 
   const record = Effect.fnUntraced(function*(sample: Sample) {
     yield* Queue.offer(unsent, sample)
-    const flushed = yield* Ref.modify(aggregator, (current) => {
-      const { aggregator: next, flushed } = Aggregate.push(current, host, sample)
-      return [flushed, next]
+    const { flushed, stale } = yield* Ref.modify(aggregator, (current) => {
+      const result = Aggregate.push(current, host, sample)
+      return [result, result.aggregator]
     })
+    if (stale) yield* Effect.logWarning(`clock moved back, sample at ${sample.at} left out of the aggregates`)
     if (flushed.length === 0) return
     const dropped = yield* Ref.modify(outbox, (current) => {
       const { outbox: next, dropped } = Outbox.append(current, flushed)
@@ -102,11 +112,10 @@ export const run = Effect.fnUntraced(function*(options: { readonly host: string 
     if (dropped > 0) yield* Effect.logWarning(`outbox full, dropped the ${dropped} oldest rows`)
   })
 
-  yield* readSample.pipe(
+  const sampling = readSample.pipe(
     Effect.flatMap(record),
     Effect.catch((error) => Effect.logWarning("sample skipped", error)),
     Effect.repeat(Schedule.fixed(sampleInterval)),
-    Effect.forkChild,
   )
 
   /** Removes `rows` from the outbox. */
@@ -147,21 +156,27 @@ export const run = Effect.fnUntraced(function*(options: { readonly host: string 
     Effect.orDie,
   )
 
-  let lastSeen = 0
-  let live: boolean | undefined
-  while (true) {
-    const result = yield* report
-    lastSeen = Option.getOrElse(result.lastSeen, () => lastSeen)
-    const now = yield* Clock.currentTimeMillis
-    const fresh = isPresenceFresh(lastSeen, now)
-    if (fresh !== live) {
-      live = fresh
-      yield* Effect.logInfo(
-        `${fresh ? "viewer present, reporting every 1s" : "no viewer, reporting every 60s"} (lastSeen ${lastSeen})`,
-      )
+  const reporting = Effect.gen(function*() {
+    let lastSeen = 0
+    let live: boolean | undefined
+    while (true) {
+      const result = yield* report
+      lastSeen = Option.getOrElse(result.lastSeen, () => lastSeen)
+      const now = yield* Clock.currentTimeMillis
+      const fresh = isPresenceFresh(lastSeen, now)
+      if (fresh !== live) {
+        live = fresh
+        yield* Effect.logInfo(
+          `${fresh ? "viewer present, reporting every 1s" : "no viewer, reporting every 60s"} (lastSeen ${lastSeen})`,
+        )
+      }
+      const backlog = (yield* Ref.get(outbox)).length >= maxRowsPerReport
+      const interval = fresh || backlog ? liveUploadCadence : idleUploadCadence
+      yield* Effect.sleep(Math.max(0, Duration.toMillis(interval) - (now - result.started)))
     }
-    const backlog = (yield* Ref.get(outbox)).length >= maxRowsPerReport
-    const interval = fresh || backlog ? liveUploadCadence : idleUploadCadence
-    yield* Effect.sleep(Math.max(0, Duration.toMillis(interval) - (now - result.started)))
-  }
+  })
+
+  // Neither loop ends on its own, so this returns only by failing (a defect in
+  // either, which interrupts the other) or by interruption.
+  return yield* Effect.all([sampling, reporting], { concurrency: "unbounded", discard: true })
 })

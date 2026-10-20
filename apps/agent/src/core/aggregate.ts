@@ -1,12 +1,14 @@
 // Pure min/avg/max aggregation of samples into minute and hour buckets.
 //
 // Every sample is added to the open minute bucket and the open hour bucket. A
-// sample whose bucket start differs from the open bucket's flushes the open
-// bucket as an `AggregateRow` and starts a new one, so rows appear when the
-// first sample of the next bucket arrives. Keyed lists (cores by index, temps
-// and fans by chip + label, disks by mount, gpus by index) are aggregated per
-// key over the samples that contained that key. Optional GPU readings get a
-// stat only if at least one sample in the bucket had them.
+// sample from a later bucket flushes the open bucket as an `AggregateRow` and
+// starts a new one, so rows appear when the first sample of the next bucket
+// arrives. A sample from before the open minute or hour bucket (the clock moved
+// back) is left out of both, since reopening a flushed bucket would emit a
+// second, partial row for it. Keyed lists (cores by index, temps and fans by
+// chip + label, disks by mount, gpus by index) are aggregated per key over the
+// samples that contained that key. Optional GPU readings get a stat only if at
+// least one sample in the bucket had them.
 import type {
   AggregateRow,
   DiskReading,
@@ -217,12 +219,25 @@ export interface Aggregator {
 
 export const empty: Aggregator = { minute: undefined, hour: undefined }
 
-/** Adds `sample` to both buckets. Returns rows for buckets the sample closed, minute before hour. */
+/**
+ * Adds `sample` to both buckets. Returns rows for buckets the sample closed,
+ * minute before hour, and whether the sample was `stale`: older than an open
+ * bucket, so it was left out and the aggregator is unchanged.
+ */
 export const push = (
   aggregator: Aggregator,
   host: string,
   sample: Sample,
-): { readonly aggregator: Aggregator; readonly flushed: ReadonlyArray<AggregateRow> } => {
+): {
+  readonly aggregator: Aggregator
+  readonly flushed: ReadonlyArray<AggregateRow>
+  readonly stale: boolean
+} => {
+  const isOlder = (resolution: Resolution) => {
+    const open = aggregator[resolution]
+    return open !== undefined && bucketStart(sample.at, resolution) < open.at
+  }
+  if (isOlder("minute") || isOlder("hour")) return { aggregator, flushed: [], stale: true }
   const flushed: Array<AggregateRow> = []
   const step = (resolution: Resolution): Bucket => {
     const open = aggregator[resolution]
@@ -234,5 +249,5 @@ export const push = (
   }
   const minute = step("minute")
   const hour = step("hour")
-  return { aggregator: { minute, hour }, flushed }
+  return { aggregator: { minute, hour }, flushed, stale: false }
 }
