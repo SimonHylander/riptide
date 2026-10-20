@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/main.ts",
-    "sample": "bun src/dev/printSamples.ts",
+    "sample": "RIPTIDE_GATEWAY=stdout RIPTIDE_STDOUT_LAST_SEEN=now bun src/main.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

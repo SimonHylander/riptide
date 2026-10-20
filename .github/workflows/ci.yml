@@ -20,8 +20,9 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
 
-  # Builds the compiled agent on x86_64-linux and boots it. Without env the
-  # agent must stop at config loading, which proves the binary runs.
+  # Builds the compiled agent on x86_64-linux and runs it for 5s on the real
+  # Linux collectors with the stdout gateway. `RIPTIDE_STDOUT_LAST_SEEN=now`
+  # makes it report every second; at least 3 decodable reports must appear.
   agent-nix:
     runs-on: ubuntu-latest
     steps:
@@ -31,8 +32,8 @@ jobs:
           extra_nix_config: accept-flake-config = true
       - run: nix build .#agent -L
       - run: |
-          if ./result/bin/riptide-agent > out.txt 2>&1; then
-            echo "expected a config error without CONVEX_URL"; exit 1
-          fi
-          cat out.txt
-          grep -q 'ConfigError' out.txt
+          RIPTIDE_GATEWAY=stdout RIPTIDE_STDOUT_LAST_SEEN=now timeout 5 ./result/bin/riptide-agent > reports.jsonl || true
+          head -n 1 reports.jsonl
+          jq -c 'select((.sample.cpu.totalPct | type) == "number" and .sample.memory.totalBytes > 0)' reports.jsonl > valid.jsonl
+          echo "valid reports: $(wc -l < valid.jsonl)"
+          test "$(wc -l < valid.jsonl)" -ge 3
