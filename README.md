@@ -150,6 +150,7 @@ DynamicUser=true
 LoadCredential=token:/etc/riptide/token
 Restart=always
 RestartSec=5s
+SuccessExitStatus=130
 UMask=0077
 
 CapabilityBoundingSet=

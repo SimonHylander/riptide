@@ -76,6 +76,8 @@ in
         LoadCredential = "token:${cfg.tokenFile}";
         Restart = "always";
         RestartSec = "5s";
+        # The Effect runtime exits 130 when interrupted by SIGTERM; a stop is not a failure.
+        SuccessExitStatus = "130";
         UMask = "0077";
 
         CapabilityBoundingSet = "";
