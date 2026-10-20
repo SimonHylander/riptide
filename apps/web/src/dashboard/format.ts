@@ -50,6 +50,30 @@ export const formatCelsius = (celsius: number): string => `${oneDecimal.format(c
 /** Power in whole watts. */
 export const formatWatts = (watts: number): string => `${whole.format(watts)} W`
 
+/** Whole number with grouping, e.g. `1,180`. */
+export const formatWhole = (value: number): string => whole.format(value)
+
+// Chart times are in the viewer's time zone. Charts render client-only, so
+// server and client never disagree on them.
+const clock = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+const date = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" })
+const dateTime = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+})
+
+/** Time of day, e.g. `14:05`. */
+export const formatClock = (at: number): string => clock.format(at)
+
+/** Calendar day, e.g. `Oct 20`. */
+export const formatDate = (at: number): string => date.format(at)
+
+/** Day and time, e.g. `Oct 20, 14:05`. */
+export const formatDateTime = (at: number): string => dateTime.format(at)
+
 /** Elapsed time for "updated … ago" labels. Under 5s reads `just now`. */
 export const formatAgo = (ms: number): string => {
   const seconds = Math.max(0, Math.floor(ms / 1000))

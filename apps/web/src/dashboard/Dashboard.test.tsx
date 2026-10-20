@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { useSyncExternalStore } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -20,9 +20,14 @@ const renderDashboard = (feed: MetricsFeed = createFixtureFeed({ onHeartbeat: ()
     </FeedProvider>,
   )
 
-const tile = (name: string) => screen.queryByRole("region", { name })
+const section = (name: RegExp) => screen.getByRole("region", { name })
+const tile = (name: string) => within(section(/ live$/)).queryByRole("region", { name })
+const chart = (name: string) => within(section(/ history$/)).queryByRole("region", { name })
 
-const checkedHost = () => screen.getAllByRole("radio").find((radio) => radio.getAttribute("aria-checked") === "true")?.textContent
+const checkedHost = () =>
+  within(screen.getByRole("radiogroup", { name: "Host" }))
+    .getAllByRole("radio")
+    .find((radio) => radio.getAttribute("aria-checked") === "true")?.textContent
 
 /** The fixture feed with a host list the test controls. */
 const withHosts = (initial: ReadonlyArray<HostSummary>) => {
@@ -115,5 +120,27 @@ describe("Dashboard", () => {
     act(() => fireEvent.click(screen.getByRole("button", { name: "Retry" })))
 
     expect(checkedHost()).toBe("desktop")
+  })
+
+  it("charts every history metric the host reports", () => {
+    renderDashboard()
+
+    for (const name of ["CPU", "Memory", "Load", "Temperatures", "Fans", "Disks", "GPU 0"]) {
+      expect(chart(name), name).not.toBeNull()
+    }
+    expect(screen.getByRole("radio", { name: "1h" }).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("omits GPU and sensor charts for a host without them", () => {
+    renderDashboard()
+
+    act(() => fireEvent.click(screen.getByRole("radio", { name: "vm" })))
+
+    for (const name of ["CPU", "Memory", "Load", "Disks"]) {
+      expect(chart(name), name).not.toBeNull()
+    }
+    for (const name of ["GPU 0", "Temperatures", "Fans"]) {
+      expect(chart(name), name).toBeNull()
+    }
   })
 })

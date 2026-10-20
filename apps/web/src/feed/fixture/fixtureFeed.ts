@@ -1,6 +1,8 @@
-import { useSyncExternalStore } from "react"
+import { rangeWindow } from "@riptide/domain"
+import { useMemo, useSyncExternalStore } from "react"
 
 import { FeedResult, type HostSummary, type LiveSnapshot, type MetricsFeed } from "../port"
+import { fixtureHistory } from "./history"
 import { fixtureHosts, type FixtureHost } from "./hosts"
 import { nextSample, seededRandom } from "./simulate"
 
@@ -29,7 +31,8 @@ const toState = (entries: FixtureState["entries"]): FixtureState => ({
  * backend. Ticking hosts get a new random-walk sample every `tickMs` while
  * anything is subscribed. Other hosts keep their first sample, so a host with
  * a large `staleForMs` reads as offline. The first state is seeded, so server
- * and client render the same values.
+ * and client render the same values. History is generated from each host's
+ * first sample and ends at its last report.
  */
 export const createFixtureFeed = ({
   hosts = fixtureHosts,
@@ -89,6 +92,13 @@ export const createFixtureFeed = ({
   return {
     useHosts: () => FeedResult.ready(useFixtureState().hosts),
     useLive: (host) => FeedResult.ready(useFixtureState().live.get(host) ?? null),
+    useHistory: ({ host, range, to }) =>
+      useMemo(() => {
+        const entry = initial.entries.find(({ snapshot }) => snapshot.host === host)
+        if (entry === undefined) return FeedResult.ready([])
+        const lastAt = entry.fixture.ticks ? to : entry.snapshot.updatedAt
+        return FeedResult.ready(fixtureHistory(entry.snapshot.sample, host, rangeWindow(range, to), lastAt))
+      }, [host, range, to]),
     useSendHeartbeat: () => sendHeartbeat,
   }
 }

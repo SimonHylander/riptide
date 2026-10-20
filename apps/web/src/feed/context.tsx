@@ -1,6 +1,6 @@
 import { createContext, use, type ReactNode } from "react"
 
-import type { MetricsFeed } from "./port"
+import type { HistoryQuery, MetricsFeed } from "./port"
 import { useHeartbeatLoop } from "./useHeartbeatLoop"
 
 const FeedContext = createContext<MetricsFeed | null>(null)
@@ -21,6 +21,9 @@ export const useHosts = () => useFeed().useHosts()
 
 /** Latest sample for `host`. */
 export const useLive = (host: string) => useFeed().useLive(host)
+
+/** Aggregate rows for a closed history window. */
+export const useHistory = (query: HistoryQuery) => useFeed().useHistory(query)
 
 /** Sends presence heartbeats while the tab is visible. Mount once per page. */
 export const useHeartbeat = (): void => useHeartbeatLoop(useFeed().useSendHeartbeat())

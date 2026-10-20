@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from "react"
 
+import type { FeedFailure } from "~/feed/port"
+
 /** Value bands for status color. Values below `warnAt` use the neutral magnitude hue. */
 export interface Thresholds {
   readonly warnAt: number
@@ -106,4 +108,13 @@ export const ReadingRow = ({ label, children }: { readonly label: ReactNode; rea
     <span className="truncate">{label}</span>
     <span className="shrink-0">{children}</span>
   </div>
+)
+
+/** Centered muted message for empty, loading and failed states. */
+export const Notice = ({ children }: { readonly children: ReactNode }) => (
+  <p className="py-12 text-center text-sm text-muted">{children}</p>
+)
+
+export const FailureNotice = ({ reason }: { readonly reason: FeedFailure }) => (
+  <Notice>{reason === "unauthorized" ? "Not authorized to read metrics." : "Metrics are unavailable right now."}</Notice>
 )

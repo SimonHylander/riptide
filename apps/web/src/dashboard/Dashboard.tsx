@@ -1,12 +1,14 @@
 import { isOffline, type EpochMillis, type Sample } from "@riptide/domain"
-import { useState, type ReactNode } from "react"
+import { Fragment, useState, type ReactNode } from "react"
 
 import { useHeartbeat, useHosts, useLive } from "~/feed/context"
-import type { FeedFailure, FeedResult, HostSummary, LiveSnapshot } from "~/feed/port"
+import type { FeedResult, HostSummary, LiveSnapshot } from "~/feed/port"
 
 import { ErrorBoundary } from "./ErrorBoundary"
 import { formatAgo } from "./format"
+import { HistorySection } from "./history"
 import { CpuTile, DisksTile, FansTile, GpuTile, LoadTile, MemoryTile, TempsTile, UptimeTile } from "./tiles"
+import { FailureNotice, Notice } from "./ui"
 import { useNow } from "./useNow"
 
 /** The most recently updated host, the default selection. */
@@ -15,7 +17,7 @@ export const mostRecentHost = (hosts: ReadonlyArray<HostSummary>): string | unde
     ?.host
 
 /**
- * Live dashboard: host picker, then tiles for the selected host. Sends presence heartbeats while visible.
+ * Dashboard: host picker, then live tiles and history charts for the selected host. Sends presence heartbeats while visible.
  * `account` goes on the right of the header, after the picker. Errors a feed throws show the unavailable notice with a retry.
  */
 export const Dashboard = ({ account }: { readonly account?: ReactNode }) => (
@@ -50,8 +52,10 @@ const LiveDashboard = ({ account }: { readonly account: ReactNode }) => {
 
   return (
     <Shell account={account} picker={<HostPicker hosts={hosts.value} selected={selected} onSelect={select} />}>
-      <LiveSection key={selected} host={selected} />
-      {/* History charts for `selected` go here, below the live tiles. */}
+      <Fragment key={selected}>
+        <LiveSection host={selected} />
+        <HistorySection host={selected} />
+      </Fragment>
     </Shell>
   )
 }
@@ -89,12 +93,6 @@ const Shell = ({
     </header>
     <main className="mt-6 space-y-8">{children}</main>
   </div>
-)
-
-const Notice = ({ children }: { readonly children: ReactNode }) => <p className="py-12 text-center text-sm text-muted">{children}</p>
-
-const FailureNotice = ({ reason }: { readonly reason: FeedFailure }) => (
-  <Notice>{reason === "unauthorized" ? "Not authorized to read metrics." : "Metrics are unavailable right now."}</Notice>
 )
 
 const HostPicker = ({

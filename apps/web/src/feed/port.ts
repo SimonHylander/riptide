@@ -1,4 +1,4 @@
-import type { EpochMillis, Sample } from "@riptide/domain"
+import type { AggregateRow, EpochMillis, HistoryRange, Sample } from "@riptide/domain"
 
 /** Why a feed read failed. `unauthorized` is the backend's `Unauthorized` error. */
 export type FeedFailure = "unauthorized" | "unavailable"
@@ -28,19 +28,35 @@ export interface LiveSnapshot extends HostSummary {
 }
 
 /**
+ * A closed history read: `host`'s rows in `rangeWindow(range, to)`. `to` is
+ * fixed (see `useFixedTo`), never the current time, so a reactive backend does
+ * not re-run the read when new rows land.
+ */
+export interface HistoryQuery {
+  readonly host: string
+  readonly range: HistoryRange
+  readonly to: EpochMillis
+}
+
+/**
  * The dashboard's only data source. Components never talk to a backend
  * directly, they call the hooks in `./context`, which delegate to the adapter
  * provided by `FeedProvider`.
  *
  * Every member is a React hook. An adapter is chosen once at startup and never
- * swapped, so calling its hooks keeps the rules of hooks. New reads (history)
- * are added as new members without changing the existing ones.
+ * swapped, so calling its hooks keeps the rules of hooks. New reads are added
+ * as new members without changing the existing ones.
  */
 export interface MetricsFeed {
   /** All hosts that have reported. */
   readonly useHosts: () => FeedResult<ReadonlyArray<HostSummary>>
   /** Latest sample for `host`, `null` when the host has never reported. */
   readonly useLive: (host: string) => FeedResult<LiveSnapshot | null>
+  /**
+   * Aggregate rows in `[from, to)` of `rangeWindow(range, to)`, oldest first:
+   * minute rows for 1h and 24h, hour rows for 7d and 30d.
+   */
+  readonly useHistory: (query: HistoryQuery) => FeedResult<ReadonlyArray<AggregateRow>>
   /** Returns a function that records one presence heartbeat. */
   readonly useSendHeartbeat: () => () => Promise<void>
 }

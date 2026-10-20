@@ -20,6 +20,21 @@
   --font-mono: 'Berkeley Mono', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
+/*
+ * History chart hues, one per metric family (see `Hue` in dashboard/charts).
+ * Kept clear of the status hues so a chart never reads as an alert. `static`
+ * because charts read them as `var()` in SVG, which Tailwind cannot see.
+ */
+@theme static {
+  --color-chart-cpu: light-dark(#2d6e8c, #5aa6c6);
+  --color-chart-memory: light-dark(#6a52b3, #a594ea);
+  --color-chart-load: light-dark(#1c7d77, #4cc3b9);
+  --color-chart-temp: light-dark(#b0427a, #e57aae);
+  --color-chart-fan: light-dark(#7a6a2f, #c8b26a);
+  --color-chart-disk: light-dark(#56708c, #93abc4);
+  --color-chart-gpu: light-dark(#4a55c4, #8d97f2);
+}
+
 @layer base {
   :root {
     color-scheme: light dark;
