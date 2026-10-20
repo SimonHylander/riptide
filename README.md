@@ -117,10 +117,11 @@ The token never enters the Nix store. Put it on the host yourself (see below) or
 
 ### Other Linux hosts
 
-Get the binary with Nix on the host. The compiled binary links against glibc in the Nix store, so it needs its closure, not just the file.
+Get the binary with Nix on the host. The compiled binary links against glibc in the Nix store, so it needs its closure, not just the file. Build as your user, because sudo drops `SSH_AUTH_SOCK` and the fetch from this private repo fails. sudo only registers the result as a GC root at `/opt/riptide-agent`.
 
 ```sh
-sudo nix build 'git+ssh://git@github.com/SimonHylander/riptide#agent' --out-link /opt/riptide-agent
+nix build 'git+ssh://git@github.com/SimonHylander/riptide#agent' --out-link ./riptide-agent
+sudo nix-store --add-root /opt/riptide-agent --realise "$(readlink -f ./riptide-agent)"
 # or build on another Linux machine of the same arch and copy the closure:
 #   nix build .#agent && nix copy --to ssh://root@<host> ./result
 #   then on the host: sudo nix-store --add-root /opt/riptide-agent --realise <store path>
