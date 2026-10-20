@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 
-import { EpochMillis, NonNegative } from "./primitives"
+import { EpochMillis } from "./primitives"
 
 /** Bucket granularity of an {@link AggregateRow}. */
 export const Resolution = Schema.Literals(["minute", "hour"])
@@ -17,13 +17,14 @@ export type Stat = typeof Stat.Type
 /**
  * Min/avg/max of a host's samples over one minute or hour.
  *
- * Mirrors {@link Sample} with numeric leaves replaced by {@link Stat}. Static
- * facts (memory and disk totals) stay plain numbers, taken from the last
- * sample. Entries carry their identity key: `cpu.cores` is positional (core
- * index), temps and fans use `chip` + `label`, disks use `mount`, gpus use
- * `index`. Device names, filesystem types, GPU names and uptime are left out
- * to keep rows small, read them from the latest {@link Sample}. The load
- * averages are under `load` because `host` is the host name here.
+ * Mirrors {@link Sample} with every numeric reading replaced by a {@link Stat},
+ * capacities and uptime included. Field names drop the unit suffix, units
+ * match {@link Sample}. Entries carry their identity key as a plain value:
+ * `cpu.cores` is positional (core index), temps and fans use `chip` + `label`,
+ * disks use `mount`, gpus use `index`. Device names, filesystem types and GPU
+ * names are left out to keep rows small, read them from the latest
+ * {@link Sample}. Load and uptime ({@link Sample} `host`) are under `system`
+ * because `host` is the host name here.
  */
 export const AggregateRow = Schema.Struct({
   host: Schema.String,
@@ -37,28 +38,29 @@ export const AggregateRow = Schema.Struct({
     cores: Schema.Array(Stat),
   }),
   memory: Schema.Struct({
-    totalBytes: NonNegative,
+    total: Stat,
     used: Stat,
     available: Stat,
-    swapTotalBytes: NonNegative,
+    swapTotal: Stat,
     swapUsed: Stat,
   }),
-  load: Schema.Struct({
+  system: Schema.Struct({
     load1: Stat,
     load5: Stat,
     load15: Stat,
+    uptime: Stat,
   }),
   sensors: Schema.Struct({
     temps: Schema.Array(Schema.Struct({ chip: Schema.String, label: Schema.String, celsius: Stat })),
     fans: Schema.Array(Schema.Struct({ chip: Schema.String, label: Schema.String, rpm: Stat })),
   }),
-  disks: Schema.Array(Schema.Struct({ mount: Schema.String, totalBytes: NonNegative, used: Stat })),
+  disks: Schema.Array(Schema.Struct({ mount: Schema.String, total: Stat, used: Stat })),
   gpus: Schema.Array(
     Schema.Struct({
       index: Schema.Int,
-      memoryTotalBytes: NonNegative,
       utilization: Stat,
       memoryUsed: Stat,
+      memoryTotal: Stat,
       temperature: Schema.optionalKey(Stat),
       power: Schema.optionalKey(Stat),
     }),
