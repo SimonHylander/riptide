@@ -1,0 +1,7 @@
+{
+  "/": { "totalBytes": 982854242304, "usedBytes": 418162925568 },
+  "/boot/efi": { "totalBytes": 535805952, "usedBytes": 6418432 },
+  "/data": { "totalBytes": 1967846510592, "usedBytes": 1203412340736 },
+  "/srv/media": { "totalBytes": 1967846510592, "usedBytes": 1203412340736 },
+  "/mnt/Games Library": { "totalBytes": 2000381014016, "usedBytes": 1311768465408 }
+}

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/main.ts",
+    "sample": "bun src/dev/printSamples.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
