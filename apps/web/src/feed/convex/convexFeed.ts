@@ -38,6 +38,9 @@ const useFeedResult = <A, E extends { readonly _tag: string }>(result: QueryResu
 export const convexFeed: MetricsFeed = {
   useHosts: () => useFeedResult(useQuery(dashboard.hosts)),
   useLive: (host) => useFeedResult(useQuery(dashboard.live, { host })),
+  // `to` is the caller's fixed minute (useFixedTo), so this subscription reads a closed range
+  // and does not re-run as new rows land.
+  useHistory: ({ host, range, to }) => useFeedResult(useQuery(dashboard.history, { host, range, to })),
   useSendHeartbeat: () => {
     const heartbeat = useMutation(dashboard.heartbeat)
     return useCallback(async () => {
