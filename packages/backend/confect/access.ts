@@ -1,5 +1,6 @@
 import * as Config from "effect/Config"
 import * as Effect from "effect/Effect"
+import * as Option from "effect/Option"
 import * as Redacted from "effect/Redacted"
 
 import { Auth } from "./_generated/services"
@@ -23,12 +24,19 @@ export const requireAgentToken = Effect.fnUntraced(function* (token: string) {
 })
 
 /**
+ * Whether the signed-in caller is env `ALLOWED_USER_ID`. A missing `ALLOWED_USER_ID` allows nobody.
+ * Fails `Unauthorized` when there is no identity.
+ */
+export const isAllowedUser = Effect.gen(function* () {
+  const identity = yield* (yield* Auth).getUserIdentity.pipe(Effect.mapError(() => new Unauthorized()))
+  const allowed = yield* Config.option(Config.String("ALLOWED_USER_ID")).pipe(Effect.orDie)
+  return Option.contains(allowed, identity.subject)
+})
+
+/**
  * Fails `Unauthorized` unless the caller is signed in as env `ALLOWED_USER_ID`.
- * No identity, or a missing `ALLOWED_USER_ID`, also fails `Unauthorized`. Every dashboard function runs this first.
+ * No identity, or a missing `ALLOWED_USER_ID`, also fails `Unauthorized`. Every dashboard data function runs this first.
  */
 export const requireAllowedUser = Effect.gen(function* () {
-  const auth = yield* Auth
-  const identity = yield* auth.getUserIdentity
-  const allowed = yield* Config.String("ALLOWED_USER_ID")
-  if (identity.subject !== allowed) return yield* new Unauthorized()
-}).pipe(Effect.mapError(() => new Unauthorized()))
+  if (!(yield* isAllowedUser)) return yield* new Unauthorized()
+})

@@ -4,3 +4,4 @@ export const heartbeat = registeredFunctions.heartbeat;
 export const history = registeredFunctions.history;
 export const hosts = registeredFunctions.hosts;
 export const live = registeredFunctions.live;
+export const viewer = registeredFunctions.viewer;

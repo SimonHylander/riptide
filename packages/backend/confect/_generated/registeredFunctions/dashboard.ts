@@ -7,6 +7,7 @@ const forward = <Ctx, Args, Returns>(handler: (ctx: Ctx, args: Args) => Promise<
 const definitions = ConvexFunctionDefinitions.buildForGroup<typeof import("../../dashboard.spec")["default"]>(databaseSchema, groupLayer);
 
 export default {
+["viewer"]: RegisteredConvexFunction.register({ ...definitions["viewer"], handler: forward(definitions["viewer"].handler) }),
 ["heartbeat"]: RegisteredConvexFunction.register({ ...definitions["heartbeat"], handler: forward(definitions["heartbeat"].handler) }),
 ["hosts"]: RegisteredConvexFunction.register({ ...definitions["hosts"], handler: forward(definitions["hosts"].handler) }),
 ["live"]: RegisteredConvexFunction.register({ ...definitions["live"], handler: forward(definitions["live"].handler) }),

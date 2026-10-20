@@ -29,6 +29,26 @@ bun run dev                                     # web on :3000 (next free port i
 
 `convex dev` writes `packages/backend/.env.local` (gitignored). `apps/web` reads `CONVEX_URL` from that file as `VITE_CONVEX_URL`. To use another deployment, set `VITE_CONVEX_URL` in the shell, in `apps/web/.env.local`, or in the Vercel project.
 
+## Auth
+
+The dashboard signs in with WorkOS AuthKit. Every page except `/sign-in` and `/callback` requires a session, and Convex only serves data to `ALLOWED_USER_ID`. Other WorkOS users see a "Not authorized" page.
+
+WorkOS dashboard, per environment:
+
+1. Create the AuthKit application and turn **sign-up off** (Authentication settings). The app has no sign-up route, so sign-up only exists if it is enabled here.
+2. **Redirects:** Redirect URI `http://localhost:3000/callback`, Initiate login URI `http://localhost:3000/sign-in`, Sign-out redirect `http://localhost:3000/`. Add the production URLs when deploying.
+3. **Users:** invite Simon, accept the invite and sign in once. Copy the user ID (`user_...`).
+
+Web: copy `apps/web/.env.example` to `apps/web/.env.local` and fill in `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `WORKOS_REDIRECT_URI` and `WORKOS_COOKIE_PASSWORD` (`openssl rand -base64 24`). They are server-only and read at request time. On Vercel, set them as project env vars.
+
+Convex: `convex/auth.config.ts` (generated from `confect/auth.ts`) trusts WorkOS tokens for `WORKOS_CLIENT_ID`. Set both values on the deployment before pushing:
+
+```sh
+cd packages/backend
+bunx convex env set WORKOS_CLIENT_ID client_...
+bunx convex env set ALLOWED_USER_ID user_...
+```
+
 ## Scripts
 
 | Script              | What                                                              |

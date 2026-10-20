@@ -9,7 +9,21 @@ import * as TestConfect from "./TestConfect"
 
 useTestEnv()
 
-const { heartbeat, hosts, live, history } = refs.public.dashboard
+const { viewer, heartbeat, hosts, live, history } = refs.public.dashboard
+
+describe("dashboard viewer", () => {
+  it.effect("reports allowed and disallowed users, rejects no identity, and allows nobody without ALLOWED_USER_ID", () =>
+    Effect.gen(function* () {
+      const c = yield* TestConfect.TestConfect
+      expect(yield* c.withIdentity({ subject: allowedUser }).query(viewer)).toEqual({ allowed: true })
+      expect(yield* c.withIdentity({ subject: "someone_else" }).query(viewer)).toEqual({ allowed: false })
+      expect(yield* c.query(viewer).pipe(Effect.flip)).toBeInstanceOf(Unauthorized)
+
+      delete process.env.ALLOWED_USER_ID
+      expect(yield* c.withIdentity({ subject: allowedUser }).query(viewer)).toEqual({ allowed: false })
+    }).pipe(Effect.provide(TestConfect.layer)),
+  )
+})
 
 describe("dashboard auth", () => {
   it.effect("rejects no identity and a wrong subject on every function", () =>

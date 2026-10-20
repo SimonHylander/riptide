@@ -7,11 +7,16 @@ import * as Option from "effect/Option"
 
 import databaseSchema from "./_generated/schema"
 import { DatabaseReader, DatabaseWriter } from "./_generated/services"
-import { requireAllowedUser } from "./access"
+import { isAllowedUser, requireAllowedUser } from "./access"
 import { aggregateTables } from "./aggregateTables"
 import dashboard from "./dashboard.spec"
 
 // Queries below never read the clock: time must not drive query results or reactivity.
+
+/** Reports access instead of failing for a disallowed subject. The data functions below still enforce it. */
+const viewer = FunctionImpl.make(databaseSchema, dashboard, "viewer", () =>
+  isAllowedUser.pipe(Effect.map((allowed) => ({ allowed }))),
+)
 
 /** Sets `presence.lastSeen` to now, creating the doc on the first heartbeat. */
 const heartbeat = FunctionImpl.make(databaseSchema, dashboard, "heartbeat", () =>
@@ -76,6 +81,7 @@ const history = FunctionImpl.make(databaseSchema, dashboard, "history", ({ host,
 )
 
 export default GroupImpl.make(databaseSchema, dashboard).pipe(
+  Layer.provide(viewer),
   Layer.provide(heartbeat),
   Layer.provide(hosts),
   Layer.provide(live),

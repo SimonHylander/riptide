@@ -9,8 +9,20 @@ import { Unauthorized } from "./errors"
 export const HostSummary = Schema.Struct({ host: Schema.String, updatedAt: EpochMillis })
 export type HostSummary = typeof HostSummary.Type
 
-// Every function requires the signed-in user to be ALLOWED_USER_ID.
+/** Whether the signed-in user is ALLOWED_USER_ID. */
+export const Viewer = Schema.Struct({ allowed: Schema.Boolean })
+export type Viewer = typeof Viewer.Type
+
+// Every function except `viewer` requires the signed-in user to be ALLOWED_USER_ID.
 export default GroupSpec.make()
+  .addFunction(
+    /** Access check for the UI. Fails only without an identity, so a disallowed user gets `{ allowed: false }`. */
+    FunctionSpec.publicQuery({
+      name: "viewer",
+      returns: () => Viewer,
+      error: () => Unauthorized,
+    }),
+  )
   .addFunction(
     /** Marks a viewer as present by setting `presence.lastSeen` to now. */
     FunctionSpec.publicMutation({
