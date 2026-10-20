@@ -1,0 +1,18 @@
+{
+  "name": "riptide",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "bun run --parallel --filter '@riptide/web' --filter '@riptide/backend' dev",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^4.0.5",
+    "@types/bun": "^1.4.3",
+    "effect": "4.0.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
