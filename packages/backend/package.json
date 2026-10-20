@@ -6,7 +6,8 @@
   "scripts": {
     "codegen": "confect codegen",
     "dev": "convex dev --start \"confect dev\"",
-    "deploy": "confect codegen && convex dev --once",
+    "push:dev": "confect codegen && convex dev --once",
+    "deploy": "confect codegen && convex deploy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

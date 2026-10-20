@@ -23,7 +23,7 @@ Requires [Bun](https://bun.sh) and Node 24+ (Confect's CLI). `nix develop` provi
 
 ```sh
 bun install
-cd packages/backend && bunx convex dev --once   # first run: log in and link or create the Convex project
+(cd packages/backend && bunx convex dev --once) # first run: log in and link or create the Convex project
 bun run dev                                     # web on :3000 (next free port if taken) plus Convex and Confect watchers
 ```
 
