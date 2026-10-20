@@ -18,6 +18,8 @@ for chip in /sys/class/hwmon/hwmon*; do
   [ -e "$chip" ] || continue
   dest="$out/sys/class/hwmon/$(basename "$chip")"
   mkdir -p "$dest"
+  # The device link names the chip's parent device. Copied as a (dangling) symlink.
+  [ -L "$chip/device" ] && ln -s "$(readlink "$chip/device")" "$dest/device"
   for f in "$chip"/name "$chip"/temp*_input "$chip"/temp*_label "$chip"/fan*_input "$chip"/fan*_label; do
     [ -f "$f" ] || continue
     cat "$f" > "$dest/$(basename "$f")" 2>/dev/null || rm -f "$dest/$(basename "$f")"

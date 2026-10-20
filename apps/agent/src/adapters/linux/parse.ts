@@ -55,12 +55,14 @@ const usagePct = (previous: CpuTimes | undefined, next: CpuTimes): number => {
 /**
  * Utilization between two snapshots. Without a previous snapshot (or for a core
  * that just came online) it is the average since boot. Always in [0, 100].
+ * `coresPct[i]` is `cpuI`, up to the highest online index. Offline cores read 0.
  */
 export const cpuUsage = (previous: CpuSnapshot | undefined, next: CpuSnapshot): CpuReading => ({
   totalPct: usagePct(previous?.total, next.total),
-  coresPct: [...next.cores.entries()]
-    .sort(([a], [b]) => a - b)
-    .map(([id, times]) => usagePct(previous?.cores.get(id), times)),
+  coresPct: Array.from({ length: Math.max(-1, ...next.cores.keys()) + 1 }, (_, id) => {
+    const times = next.cores.get(id)
+    return times === undefined ? 0 : usagePct(previous?.cores.get(id), times)
+  }),
 })
 
 // ---------------------------------------------------------------------------
@@ -168,13 +170,24 @@ export const diskReading = (entry: MountEntry, size: FsSize): ReadonlyArray<Disk
 // /sys/class/hwmon
 
 /**
- * One `hwmonN` directory: its `name` and the raw contents of its `temp*_input`,
+ * One `hwmonN` directory: its `name`, the basename of its `device` symlink
+ * (absent for virtual chips) and the raw contents of its `temp*_input`,
  * `temp*_label`, `fan*_input` and `fan*_label` files. Unreadable files are absent.
  */
 export interface HwmonChip {
   readonly name: string
+  readonly device?: string
   readonly files: ReadonlyMap<string, string>
 }
+
+/**
+ * Stable chip id: `<name>-<device>`, where `device` is the basename of the
+ * chip's `device` symlink, e.g. `k10temp-0000:00:18.3`, `nvme-0000:01:00.0` or
+ * `nct6798-nct6775.656`. Virtual chips without a device keep their plain `name`.
+ * The kernel rejects hwmon names containing `-`, so the first `-` splits the two parts. The id
+ * survives reboots and other chips appearing or disappearing, unlike `hwmonN`.
+ */
+export const chipId = (chip: HwmonChip): string => (chip.device === undefined ? chip.name : `${chip.name}-${chip.device}`)
 
 /** Matches the sensor input files the hwmon adapter reads, capturing kind and channel number. */
 export const sensorInputFile = /^(temp|fan)(\d+)_input$/
@@ -188,21 +201,16 @@ const channels = (chip: HwmonChip, kind: "temp" | "fan") =>
     .sort((a, b) => a - b)
 
 /**
- * Turns hwmon chips into sensor readings. Temperatures are millidegrees, fans rpm.
- * Labels fall back to `tempN` / `fanN`. Chips sharing a name (two NVMe drives)
- * get a `-0`, `-1` suffix in hwmon order. Unparsable values are skipped.
+ * Turns hwmon chips into sensor readings keyed by {@link chipId}. Temperatures
+ * are millidegrees, fans rpm. Labels fall back to `tempN` / `fanN`. Unparsable
+ * values are skipped.
  */
 export const sensorsFromHwmon = (chips: ReadonlyArray<HwmonChip>): SensorReading => {
-  const nameCounts = new Map<string, number>()
-  for (const chip of chips) nameCounts.set(chip.name, (nameCounts.get(chip.name) ?? 0) + 1)
-  const seen = new Map<string, number>()
   const temps: Array<TempReading> = []
   const fans: Array<FanReading> = []
 
   for (const chip of chips) {
-    const nth = seen.get(chip.name) ?? 0
-    seen.set(chip.name, nth + 1)
-    const chipId = (nameCounts.get(chip.name) ?? 0) > 1 ? `${chip.name}-${nth}` : chip.name
+    const id = chipId(chip)
     const read = (kind: "temp" | "fan", n: number) => {
       const raw = chip.files.get(`${kind}${n}_input`)?.trim()
       const value = raw === undefined || raw === "" ? Number.NaN : Number(raw)
@@ -211,11 +219,11 @@ export const sensorsFromHwmon = (chips: ReadonlyArray<HwmonChip>): SensorReading
     }
     for (const n of channels(chip, "temp")) {
       const { value, label } = read("temp", n)
-      if (Number.isFinite(value)) temps.push({ chip: chipId, label, celsius: value / 1000 })
+      if (Number.isFinite(value)) temps.push({ chip: id, label, celsius: value / 1000 })
     }
     for (const n of channels(chip, "fan")) {
       const { value, label } = read("fan", n)
-      if (Number.isFinite(value) && value >= 0) fans.push({ chip: chipId, label, rpm: value })
+      if (Number.isFinite(value) && value >= 0) fans.push({ chip: id, label, rpm: value })
     }
   }
   return { temps, fans }

@@ -8,6 +8,7 @@ import { LinuxFs } from "../src/adapters/linux/LinuxFs"
 import { LinuxSensorSource } from "../src/adapters/linux/LinuxSensorSource"
 import {
   cpuUsage,
+  type HwmonChip,
   parseHost,
   parseMeminfo,
   parseMounts,
@@ -54,6 +55,11 @@ describe("/proc/stat", () => {
     assert.deepStrictEqual(cpuUsage(snapshot, snapshot), { totalPct: 0, coresPct: [0] })
     const grown = ok(parseStat("cpu  20 0 20 160 0 0 0 0 0 0\ncpu0 10 0 10 80 0 0 0 0 0 0\ncpu1 10 0 10 80 0 0 0 0 0 0\n"))
     assert.deepStrictEqual(cpuUsage(snapshot, grown).coresPct, [0, 20])
+  })
+
+  it("keeps each core at its cpu index, offline cores reading 0", () => {
+    const snapshot = ok(parseStat("cpu  20 0 20 160 0 0 0 0 0 0\ncpu0 10 0 10 80 0 0 0 0 0 0\ncpu2 0 0 10 90 0 0 0 0 0 0\n"))
+    assert.deepStrictEqual(cpuUsage(undefined, snapshot).coresPct, [20, 0, 10])
   })
 
   it("rejects text without an aggregate cpu line", () => {
@@ -152,25 +158,25 @@ describe("hwmon", () => {
     Effect.gen(function*() {
       const { temps, fans } = yield* (yield* SensorSource).latest
       assert.deepStrictEqual(temps, [
-        { chip: "nvme-0", label: "Composite", celsius: 41.85 },
-        { chip: "nvme-0", label: "Sensor 1", celsius: 41.85 },
-        { chip: "nvme-0", label: "Sensor 2", celsius: 46.85 },
-        { chip: "nvme-1", label: "Composite", celsius: 35.85 },
-        { chip: "nvme-1", label: "Sensor 1", celsius: 35.85 },
-        { chip: "k10temp", label: "Tctl", celsius: 48.75 },
-        { chip: "k10temp", label: "Tccd1", celsius: 42.125 },
-        { chip: "amdgpu", label: "edge", celsius: 41 },
-        { chip: "mt7921_phy0", label: "temp1", celsius: 44 },
-        { chip: "nct6798", label: "SYSTIN", celsius: 32 },
-        { chip: "nct6798", label: "CPUTIN", celsius: 39.5 },
-        { chip: "nct6798", label: "AUXTIN0", celsius: 26 },
-        { chip: "nct6798", label: "AUXTIN1", celsius: -62 },
-        { chip: "nct6798", label: "SMBUSMASTER 0", celsius: 48.5 },
+        { chip: "nvme-0000:01:00.0", label: "Composite", celsius: 41.85 },
+        { chip: "nvme-0000:01:00.0", label: "Sensor 1", celsius: 41.85 },
+        { chip: "nvme-0000:01:00.0", label: "Sensor 2", celsius: 46.85 },
+        { chip: "nvme-0000:02:00.0", label: "Composite", celsius: 35.85 },
+        { chip: "nvme-0000:02:00.0", label: "Sensor 1", celsius: 35.85 },
+        { chip: "k10temp-0000:00:18.3", label: "Tctl", celsius: 48.75 },
+        { chip: "k10temp-0000:00:18.3", label: "Tccd1", celsius: 42.125 },
+        { chip: "amdgpu-0000:0c:00.0", label: "edge", celsius: 41 },
+        { chip: "mt7921_phy0-0000:05:00.0", label: "temp1", celsius: 44 },
+        { chip: "nct6798-nct6775.656", label: "SYSTIN", celsius: 32 },
+        { chip: "nct6798-nct6775.656", label: "CPUTIN", celsius: 39.5 },
+        { chip: "nct6798-nct6775.656", label: "AUXTIN0", celsius: 26 },
+        { chip: "nct6798-nct6775.656", label: "AUXTIN1", celsius: -62 },
+        { chip: "nct6798-nct6775.656", label: "SMBUSMASTER 0", celsius: 48.5 },
       ])
       assert.deepStrictEqual(fans, [
-        { chip: "nct6798", label: "fan1", rpm: 1152 },
-        { chip: "nct6798", label: "fan2", rpm: 863 },
-        ...[3, 4, 5, 6, 7].map((n) => ({ chip: "nct6798", label: `fan${n}`, rpm: 0 })),
+        { chip: "nct6798-nct6775.656", label: "fan1", rpm: 1152 },
+        { chip: "nct6798-nct6775.656", label: "fan2", rpm: 863 },
+        ...[3, 4, 5, 6, 7].map((n) => ({ chip: "nct6798-nct6775.656", label: `fan${n}`, rpm: 0 })),
       ])
     }).pipe(Effect.provide(linuxFixturePlatform("desktop"))))
 
@@ -188,6 +194,17 @@ describe("hwmon", () => {
         Layer.provide(BunFileSystem.layer),
       )),
     ))
+
+  it("keys chips by name and device, so ids survive other chips disappearing", () => {
+    const composite = new Map([["temp1_input", "40000\n"], ["temp1_label", "Composite\n"]])
+    const first = { name: "nvme", device: "0000:01:00.0", files: composite }
+    const second = { name: "nvme", device: "0000:02:00.0", files: composite }
+    const virtual = { name: "acpitz", files: new Map([["temp1_input", "27800\n"]]) }
+    const chips = (list: ReadonlyArray<HwmonChip>) => sensorsFromHwmon(list).temps.map((t) => t.chip)
+    assert.deepStrictEqual(chips([first, second, virtual]), ["nvme-0000:01:00.0", "nvme-0000:02:00.0", "acpitz"])
+    assert.deepStrictEqual(chips([second]), ["nvme-0000:02:00.0"])
+    assert.deepStrictEqual(chips([second, first]), ["nvme-0000:02:00.0", "nvme-0000:01:00.0"])
+  })
 
   it("skips unparsable values and falls back to channel labels", () => {
     const files = new Map([

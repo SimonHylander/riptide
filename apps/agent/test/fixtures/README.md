@@ -5,6 +5,8 @@ Each directory is one host as the Linux and `nvidia-smi` adapters see it:
 - `proc/{stat,meminfo,loadavg,uptime,mounts}` and `proc/sys/kernel/hostname`
 - `proc/stat.next`: `/proc/stat` one second after `proc/stat`, for CPU delta tests
 - `sys/class/hwmon/hwmonN/{name,temp*_input,temp*_label,fan*_input,fan*_label}`
+- `sys/class/hwmon/hwmonN/device`: a symlink whose target's basename names the chip's
+  parent device, as in sysfs. The target does not exist in the fixture tree.
 - `statfs.json`: `{ totalBytes, usedBytes }` per mount, standing in for `statfs(2)`
 - `nvidia-smi.csv`: output of the adapter's `nvidia-smi --query-gpu` loop (GPU hosts only)
 

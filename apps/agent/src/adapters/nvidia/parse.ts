@@ -20,17 +20,30 @@ const numberField = (raw: string | undefined): Option.Option<number> => {
   return Number.isFinite(value) ? Option.some(value) : Option.none()
 }
 
+const fieldsOf = (line: string) => line.split(",").map((field) => field.trim())
+
+const indexField = (raw: string | undefined) => numberField(raw).pipe(Option.filter(Number.isInteger))
+
+/**
+ * The GPU index of a line in the shape of `queryFields`, even when other fields
+ * are unavailable. `None` when the line names no GPU (an error message).
+ */
+export const gpuLineIndex = (line: string): Option.Option<number> => {
+  const fields = fieldsOf(line)
+  return fields.length === queryFields.length ? indexField(fields[0]) : Option.none()
+}
+
 /**
  * Parses one `--format=csv,noheader,nounits` line of `queryFields`. Memory is
  * MiB, converted to bytes. Unreportable temperature or power omit their key.
  * A line missing a required field (index, name, utilization, memory) is `None`.
  */
 export const parseGpuLine = (line: string): Option.Option<GpuReading> => {
-  const fields = line.split(",").map((field) => field.trim())
+  const fields = fieldsOf(line)
   if (fields.length !== queryFields.length) return Option.none()
   const [index, name, utilization, memoryUsed, memoryTotal, temperature, power] = fields
   return Option.all({
-    index: numberField(index).pipe(Option.filter(Number.isInteger)),
+    index: indexField(index),
     name: Option.fromNullishOr(name).pipe(Option.filter((n) => n !== "" && !n.startsWith("["))),
     utilizationPct: numberField(utilization).pipe(Option.map((pct) => Math.min(100, Math.max(0, pct)))),
     memoryUsedBytes: numberField(memoryUsed).pipe(Option.map((mib) => Math.max(0, mib) * MiB)),

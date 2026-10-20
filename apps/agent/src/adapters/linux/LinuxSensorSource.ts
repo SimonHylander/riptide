@@ -9,8 +9,10 @@ const isNotFound = (error: PlatformError.PlatformError) => error.reason._tag ===
 
 /**
  * SensorSource from `/sys/class/hwmon`. Rediscovers every chip, temperature and
- * fan on each call, with nothing hardcoded per chip. A host without hwmon (a VM)
- * reports empty lists. Individual unreadable sensor files are skipped.
+ * fan on each call, with nothing hardcoded per chip. Chips are identified by name
+ * and parent device (see `chipId`), never by their `hwmonN` number. A host
+ * without hwmon (a VM) reports empty lists. Individual unreadable sensor files
+ * are skipped.
  */
 export const LinuxSensorSource = Layer.effect(
   SensorSource,
@@ -24,6 +26,11 @@ export const LinuxSensorSource = Layer.effect(
     const readChip = Effect.fnUntraced(function*(entry: string) {
       const dir = `${root}/${entry}`
       const name = Option.getOrElse(yield* readOptional(`${dir}/name`), () => entry)
+      // The link target's basename names the parent device (`../../../0000:00:18.3`).
+      const device = yield* fs.readLink(`${dir}/device`).pipe(
+        Effect.map((target) => target.slice(target.lastIndexOf("/") + 1)),
+        Effect.option,
+      )
       const entries = yield* fs.readDirectory(dir)
       const wanted = entries.filter((file) => sensorInputFile.test(file) || /^(temp|fan)\d+_label$/.test(file))
       const files = new Map<string, string>()
@@ -31,7 +38,7 @@ export const LinuxSensorSource = Layer.effect(
         const content = yield* readOptional(`${dir}/${file}`)
         if (Option.isSome(content)) files.set(file, content.value)
       }
-      return { name: name.trim(), files } satisfies HwmonChip
+      return { name: name.trim(), ...(Option.isSome(device) && { device: device.value }), files } satisfies HwmonChip
     })
 
     const latest = fs.readDirectory(root).pipe(

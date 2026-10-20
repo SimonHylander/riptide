@@ -5,8 +5,8 @@ import type { GpuReading } from "@riptide/domain"
 import { Effect, Layer, Option } from "effect"
 import { TestClock } from "effect/testing"
 
-import { NvidiaGpuSource, nvidiaSmiAvailable, restartDelay } from "../src/adapters/nvidia/NvidiaGpuSource"
-import { parseGpuLine } from "../src/adapters/nvidia/parse"
+import { NvidiaGpuSource, nvidiaSmiAvailable, restartDelay, staleAfter } from "../src/adapters/nvidia/NvidiaGpuSource"
+import { gpuLineIndex, parseGpuLine } from "../src/adapters/nvidia/parse"
 import { GpuSource } from "../src/ports/GpuSource"
 import { fakeSpawner, fixturePath } from "./support/fixtureHost"
 
@@ -46,6 +46,12 @@ describe("parseGpuLine", () => {
     assert.isTrue(Option.isNone(parseGpuLine("No devices were found")))
     assert.isTrue(Option.isNone(parseGpuLine("")))
   })
+
+  it("finds the GPU index of a line missing a required field", () => {
+    assert.deepStrictEqual(gpuLineIndex("0, NVIDIA A100, [N/A], 10, 40960, 30, 50"), Option.some(0))
+    assert.isTrue(Option.isNone(gpuLineIndex("No devices were found")))
+    assert.isTrue(Option.isNone(gpuLineIndex("[N/A], NVIDIA A100, 1, 10, 40960, 30, 50")))
+  })
 })
 
 describe("NvidiaGpuSource", () => {
@@ -55,6 +61,29 @@ describe("NvidiaGpuSource", () => {
       assert.deepStrictEqual(gpus.map((g) => [g.index, g.utilizationPct]), [[0, 41], [1, 99]])
     }).pipe(Effect.provide(NvidiaGpuSource.pipe(Layer.provide(fakeSpawner([{
       stdout: "1, GPU B, 10, 1, 2, 30, 40\n0, GPU A, 5, 1, 2, 30, 40\n0, GPU A, 41, 1, 2, 30, 40\n1, GPU B, 99, 1, 2, 30, 40\n",
+      exitCode: 0,
+      stayOpen: true,
+    }]).layer)))))
+
+  it.effect("drops a GPU whose latest line lacks a required field", () =>
+    Effect.gen(function*() {
+      const gpus = yield* latestWhen((g) => g.length === 1)
+      assert.deepStrictEqual(gpus.map((g) => g.index), [1])
+    }).pipe(Effect.provide(NvidiaGpuSource.pipe(Layer.provide(fakeSpawner([{
+      stdout: "0, GPU A, 90, 1, 2, 30, 40\n1, GPU B, 50, 1, 2, 30, 40\n0, GPU A, [N/A], 1, 2, 30, 40\n",
+      exitCode: 0,
+      stayOpen: true,
+    }]).layer)))))
+
+  it.effect("drops a GPU after staleAfter without a line", () =>
+    Effect.gen(function*() {
+      yield* latestWhen((g) => g.length === 1)
+      yield* TestClock.adjust(staleAfter)
+      assert.strictEqual((yield* (yield* GpuSource).latest).length, 1)
+      yield* TestClock.adjust(1)
+      assert.deepStrictEqual(yield* (yield* GpuSource).latest, [])
+    }).pipe(Effect.provide(NvidiaGpuSource.pipe(Layer.provide(fakeSpawner([{
+      stdout: "0, GPU A, 90, 1, 2, 30, 40\n",
       exitCode: 0,
       stayOpen: true,
     }]).layer)))))
