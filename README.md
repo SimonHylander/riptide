@@ -41,7 +41,9 @@ WorkOS dashboard, per environment:
 
 Web: copy `apps/web/.env.example` to `apps/web/.env.local` and fill in `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `WORKOS_REDIRECT_URI` and `WORKOS_COOKIE_PASSWORD` (`openssl rand -base64 24`). They are server-only and read at request time. On Vercel, set them as project env vars.
 
-Convex: `convex/auth.config.ts` (generated from `confect/auth.ts`) trusts WorkOS tokens for `WORKOS_CLIENT_ID`. Set both values on the deployment before pushing:
+The dev server always runs on port 3000 to match the Redirect URI. If the port is taken, `vite dev` exits instead of picking another port.
+
+Convex: `convex/auth.config.ts` (generated from `confect/auth.ts`) trusts WorkOS tokens for `WORKOS_CLIENT_ID`. Every Convex deployment needs `WORKOS_CLIENT_ID` set before its first push, otherwise the push fails. A placeholder such as `client_unconfigured` works until WorkOS is set up, and sign-in fails until it is replaced. Set both values on the deployment:
 
 ```sh
 cd packages/backend

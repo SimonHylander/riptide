@@ -17,7 +17,9 @@ export default defineConfig(({ mode }) => {
   const convexUrl = webEnv.VITE_CONVEX_URL ?? backendEnv.CONVEX_URL
 
   return {
-    server: { port: 3000 },
+    // WORKOS_REDIRECT_URI points at :3000. strictPort fails fast instead of silently
+    // moving to :3001, where the callback would redirect to the wrong port.
+    server: { port: 3000, strictPort: true },
     resolve: { tsconfigPaths: true },
     define: convexUrl
       ? { "import.meta.env.VITE_CONVEX_URL": JSON.stringify(convexUrl) }

@@ -1,6 +1,8 @@
 import type { AuthConfig } from "convex/server"
 
-// Convex evaluates this with the deployment env on push and rejects the push if WORKOS_CLIENT_ID is unset.
+// Convex evaluates this with the deployment env on push. If WORKOS_CLIENT_ID is unset, the push fails with
+// "Environment variable WORKOS_CLIENT_ID is used in auth config file but its value was not set" plus `env set`
+// instructions, so a misconfigured deployment fails loudly without an explicit check here.
 const clientId = process.env.WORKOS_CLIENT_ID!
 const jwks = `https://api.workos.com/sso/jwks/${clientId}`
 
