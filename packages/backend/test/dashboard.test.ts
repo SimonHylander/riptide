@@ -57,12 +57,12 @@ describe("dashboard queries", () => {
         row("a", hourFrom),
         row("a", now - minute),
         row("a", now),
-        row("b", hourFrom),
         row("a", weekFrom - 60 * minute, "hour"),
         row("a", weekFrom, "hour"),
         row("a", now, "hour"),
       ]
       yield* c.mutation(refs.public.agent.report, { token: agentToken, ...batch("a", aggregates) })
+      yield* c.mutation(refs.public.agent.report, { token: agentToken, ...batch("b", [row("b", hourFrom)]) })
 
       const lastHour = yield* user.query(history, { host: "a", range: "1h", to: now })
       expect(lastHour.map((r) => [r.resolution, r.at])).toEqual([

@@ -32,12 +32,12 @@ const heartbeat = FunctionImpl.make(databaseSchema, dashboard, "heartbeat", () =
   ),
 )
 
-/** Reads every `live` doc. One per host, so the read stays small. */
+/** Reads the `hosts` table, not `live`, so the subscription re-runs at most once a minute per host instead of on every report. */
 const hosts = FunctionImpl.make(databaseSchema, dashboard, "hosts", () =>
   requireAllowedUser.pipe(
     Effect.andThen(
       Effect.gen(function* () {
-        const docs = yield* (yield* DatabaseReader).table("live").index("by_host").collect()
+        const docs = yield* (yield* DatabaseReader).table("hosts").index("by_host").collect()
         return docs.map(({ host, updatedAt }) => ({ host, updatedAt }))
       }).pipe(Effect.orDie),
     ),

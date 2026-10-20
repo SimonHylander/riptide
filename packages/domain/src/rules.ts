@@ -45,7 +45,7 @@ const ranges: Record<HistoryRange, { readonly resolution: Resolution; readonly s
   "30d": { resolution: "hour", span: Duration.days(30) },
 }
 
-/** Resolution and `[from, to]` window for a range ending at `to`. */
+/** Resolution and half-open `[from, to)` window for a range ending at `to`. */
 export const rangeWindow = (range: HistoryRange, to: EpochMillis): RangeWindow => {
   const { resolution, span } = ranges[range]
   return { resolution, from: to - Duration.toMillis(span), to }

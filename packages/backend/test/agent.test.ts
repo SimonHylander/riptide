@@ -1,11 +1,13 @@
 import { describe, expect, it } from "@effect/vitest"
+import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
 import { vi } from "vitest"
 
 import refs from "../confect/_generated/refs"
 import { DatabaseReader } from "../confect/_generated/services"
-import { Unauthorized } from "../confect/errors"
+import { hostsRefreshInterval } from "../confect/agent.impl"
+import { InvalidBatch, Unauthorized } from "../confect/errors"
 import { useTestEnv } from "./env"
 import { agentToken, allowedUser, batch, now, row } from "./fixtures"
 import * as TestConfect from "./TestConfect"
@@ -54,6 +56,48 @@ describe("agent.report", () => {
         Schema.Struct({ minutes: Schema.mutable(Schema.Array(Schema.Number)), hours: Schema.mutable(Schema.Array(Schema.String)) }),
       )
       expect(counts).toEqual({ minutes: [59], hours: ["hour"] })
+    }).pipe(Effect.provide(TestConfect.layer)),
+  )
+
+  it.effect("rejects a batch carrying another host's row and writes nothing", () =>
+    Effect.gen(function* () {
+      const c = yield* TestConfect.TestConfect
+      const at = now - 60_000
+      const error = yield* c
+        .mutation(report, { token: agentToken, ...batch("a", [row("a", at), row("b", at)]) })
+        .pipe(Effect.flip)
+      expect(error).toBeInstanceOf(InvalidBatch)
+
+      const counts = yield* c.run(
+        Effect.gen(function* () {
+          const reader = yield* DatabaseReader
+          const live = yield* reader.table("live").index("by_host").collect()
+          const hosts = yield* reader.table("hosts").index("by_host").collect()
+          const minutes = yield* reader.table("minutes").index("by_host_at").collect()
+          return { live: live.length, hosts: hosts.length, minutes: minutes.length }
+        }).pipe(Effect.orDie),
+        Schema.Struct({ live: Schema.Number, hosts: Schema.Number, minutes: Schema.Number }),
+      )
+      expect(counts).toEqual({ live: 0, hosts: 0, minutes: 0 })
+    }).pipe(Effect.provide(TestConfect.layer)),
+  )
+
+  it.effect("writes the hosts doc on the first report, then at most once per refresh interval", () =>
+    Effect.gen(function* () {
+      const c = yield* TestConfect.TestConfect
+      const hosts = () => c.withIdentity({ subject: allowedUser }).query(refs.public.dashboard.hosts)
+      const refresh = Duration.toMillis(hostsRefreshInterval)
+
+      yield* c.mutation(report, { token: agentToken, ...batch("a") })
+      expect(yield* hosts()).toEqual([{ host: "a", updatedAt: now }])
+
+      vi.setSystemTime(now + refresh / 2)
+      yield* c.mutation(report, { token: agentToken, ...batch("a") })
+      expect(yield* hosts()).toEqual([{ host: "a", updatedAt: now }])
+
+      vi.setSystemTime(now + refresh + 1000)
+      yield* c.mutation(report, { token: agentToken, ...batch("a") })
+      expect(yield* hosts()).toEqual([{ host: "a", updatedAt: now + refresh + 1000 }])
     }).pipe(Effect.provide(TestConfect.layer)),
   )
 

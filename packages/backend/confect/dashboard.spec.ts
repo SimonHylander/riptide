@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema"
 import live from "./_generated/tables/live"
 import { Unauthorized } from "./errors"
 
-/** A host the agent has reported, with the server time of its last report. */
+/** A host the agent has reported, with the server time of a recent report (1-minute granularity). */
 export const HostSummary = Schema.Struct({ host: Schema.String, updatedAt: EpochMillis })
 export type HostSummary = typeof HostSummary.Type
 
@@ -20,7 +20,11 @@ export default GroupSpec.make()
     }),
   )
   .addFunction(
-    /** Every reported host, ordered by host name. */
+    /**
+     * Every reported host, ordered by host name.
+     * `updatedAt` has 1-minute granularity. Use it to list hosts and pick a default, not for offline status,
+     * which comes from `live.updatedAt`.
+     */
     FunctionSpec.publicQuery({
       name: "hosts",
       returns: () => Schema.Array(HostSummary),
