@@ -1,6 +1,6 @@
 import type { EpochMillis } from "@riptide/domain"
 import { useMemo, type ReactNode } from "react"
-import { Area, CartesianGrid, ComposedChart, Line, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, ReferenceArea, Tooltip, XAxis, YAxis } from "recharts"
 
 import type { BandPoint } from "~/feed/series"
 
@@ -27,13 +27,15 @@ const noWrap = (format: (value: number) => string) => (value: number) => format(
 
 /**
  * Small-multiple history chart: the min–max range as a translucent band and
- * the average as a line, in one hue. `null` points leave gaps. Render it
+ * the average as a line, in one hue. `null` points leave gaps. A `partial`
+ * bucket gets a dashed, shaded backdrop and "partial" in its tooltip. Render it
  * client-only, its size and time labels depend on the browser.
  */
 export const BandChart = ({
   points,
   from,
   to,
+  step,
   ticks,
   hue,
   domain,
@@ -45,6 +47,8 @@ export const BandChart = ({
   readonly points: ReadonlyArray<BandPoint>
   readonly from: EpochMillis
   readonly to: EpochMillis
+  /** Bucket length, in ms. */
+  readonly step: number
   readonly ticks: ReadonlyArray<EpochMillis>
   readonly hue: Hue
   readonly domain: ValueDomain
@@ -58,6 +62,7 @@ export const BandChart = ({
 }) => {
   const color = `var(--color-chart-${hue})`
   const byAt = useMemo(() => new Map(points.map((point) => [point.at, point])), [points])
+  const partial = points.find((point) => point.partial)
 
   return (
     <ComposedChart
@@ -96,7 +101,10 @@ export const BandChart = ({
           if (!active || point?.band == null || point.avg === null) return null
           return (
             <div className="rounded border border-line bg-panel px-2 py-1.5 text-[11px] shadow-sm">
-              <p className="text-muted">{formatTime(point.at)}</p>
+              <p className="text-muted">
+                {formatTime(point.at)}
+                {point.partial && <span className="ml-1.5 italic">partial</span>}
+              </p>
               <p className="mt-0.5">
                 <span className="text-muted">avg</span> {formatValue(point.avg)}
               </p>
@@ -107,6 +115,18 @@ export const BandChart = ({
           )
         }}
       />
+      {partial !== undefined && (
+        <ReferenceArea
+          x1={partial.at}
+          x2={Math.min(partial.at + step, to)}
+          fill="var(--color-muted)"
+          fillOpacity={0.12}
+          stroke="var(--color-muted)"
+          strokeOpacity={0.6}
+          strokeDasharray="2 2"
+          ifOverflow="hidden"
+        />
+      )}
       <Area
         dataKey="band"
         stroke="none"

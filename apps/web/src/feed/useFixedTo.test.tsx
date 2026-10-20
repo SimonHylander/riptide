@@ -7,7 +7,8 @@ import { useFixedTo } from "./useFixedTo"
 afterEach(cleanup)
 
 const minute = 60_000
-const start = 1_800_000_000_000 - (1_800_000_000_000 % minute)
+const hour = 60 * minute
+const start = 1_800_000_000_000 - (1_800_000_000_000 % hour)
 
 /** A clock the test moves by hand. */
 const clock = (at: number) => {
@@ -16,7 +17,7 @@ const clock = (at: number) => {
 }
 
 describe("useFixedTo", () => {
-  it("floors the mount time to the minute and holds it across re-renders", () => {
+  it("floors the mount time to the minute for 1h and holds it across re-renders", () => {
     const time = clock(start + 42_500)
     const { result, rerender } = renderHook(() => useFixedTo("desktop", "1h", time.now))
     expect(result.current).toBe(start)
@@ -26,7 +27,18 @@ describe("useFixedTo", () => {
     expect(result.current).toBe(start)
   })
 
-  it("moves to the current minute when the range or host changes", () => {
+  it.each([
+    ["1h", start + 30 * minute],
+    ["24h", start + 30 * minute],
+    ["7d", start],
+    ["30d", start],
+  ] as const)("floors %s to its resolution, so history only holds completed buckets", (range: HistoryRange, expected) => {
+    const time = clock(start + 30 * minute + 10_000)
+    const { result } = renderHook(() => useFixedTo("desktop", range, time.now))
+    expect(result.current).toBe(expected)
+  })
+
+  it("moves to the current bucket when the range or host changes", () => {
     const time = clock(start)
     const { result, rerender } = renderHook(
       ({ host, range }: { host: string; range: HistoryRange }) => useFixedTo(host, range, time.now),
@@ -34,15 +46,19 @@ describe("useFixedTo", () => {
     )
 
     time.set(start + 3 * minute + 10_000)
-    rerender({ host: "desktop", range: "7d" })
+    rerender({ host: "desktop", range: "24h" })
     expect(result.current).toBe(start + 3 * minute)
 
-    time.set(start + 8 * minute)
-    rerender({ host: "vm", range: "7d" })
-    expect(result.current).toBe(start + 8 * minute)
+    time.set(start + hour + 8 * minute)
+    rerender({ host: "desktop", range: "7d" })
+    expect(result.current).toBe(start + hour)
 
-    time.set(start + 9 * minute)
+    time.set(start + 2 * hour + 8 * minute)
     rerender({ host: "vm", range: "7d" })
-    expect(result.current).toBe(start + 8 * minute)
+    expect(result.current).toBe(start + 2 * hour)
+
+    time.set(start + 3 * hour)
+    rerender({ host: "vm", range: "7d" })
+    expect(result.current).toBe(start + 2 * hour)
   })
 })

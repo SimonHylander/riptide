@@ -12,17 +12,23 @@ const sevenDays = rangeWindow("7d", to)
 
 const stat = (min: number, avg: number, max: number): Stat => ({ min, avg, max })
 
-const sample = (at: number, cpu: number): Sample => ({
+const tctl = (celsius: number) => [{ chip: "k10temp", label: "Tctl", celsius }]
+
+const sample = (at: number, cpu: number, temps: Sample["sensors"]["temps"] = tctl(50)): Sample => ({
   at,
   cpu: { totalPct: cpu, coresPct: [cpu] },
   memory: { totalBytes: 100, usedBytes: 40, availableBytes: 60, swapTotalBytes: 0, swapUsedBytes: 0 },
   host: { load1: 1, load5: 1, load15: 1, uptimeSeconds: 10 },
-  sensors: { temps: [{ chip: "k10temp", label: "Tctl", celsius: 50 }], fans: [] },
+  sensors: { temps, fans: [] },
   disks: [],
   gpus: [],
 })
 
-const row = (at: number, cpu: Stat, { host = "desktop", resolution = "minute" as Resolution, count = 60 } = {}): AggregateRow => ({
+const row = (
+  at: number,
+  cpu: Stat,
+  { host = "desktop", resolution = "minute" as Resolution, count = 60, temps = [] as AggregateRow["sensors"]["temps"] } = {},
+): AggregateRow => ({
   host,
   at,
   resolution,
@@ -30,7 +36,7 @@ const row = (at: number, cpu: Stat, { host = "desktop", resolution = "minute" as
   cpu: { total: cpu, cores: [cpu] },
   memory: { total: stat(100, 100, 100), used: stat(40, 40, 40), available: stat(60, 60, 60), swapTotal: stat(0, 0, 0), swapUsed: stat(0, 0, 0) },
   system: { load1: stat(1, 1, 1), load5: stat(1, 1, 1), load15: stat(1, 1, 1), uptime: stat(10, 10, 10) },
-  sensors: { temps: [], fans: [] },
+  sensors: { temps, fans: [] },
   disks: [],
   gpus: [],
 })
@@ -45,6 +51,7 @@ describe("mergeSeries", () => {
       from: oneHour.from,
       to: oneHour.to,
       points: [],
+      metrics: new Map(),
     })
   })
 
@@ -84,13 +91,52 @@ describe("mergeSeries", () => {
     ])
   })
 
-  it("combines the partial history bucket at `to` with the tail, weighted by count", () => {
-    // 7d reads hour rows. `to` mid-hour leaves the current hour split between both.
-    const midHour = rangeWindow("7d", to + 30 * minute)
-    const history = [row(to, stat(10, 20, 30), { resolution: "hour", count: 3 })]
-    const tail = append(emptyTail("desktop", midHour), sample(to + 30 * minute, 40))
+  it("keeps history and tail buckets apart", () => {
+    // 7d reads hour rows and `to` is an hour boundary: the last row is the completed hour before it.
+    const history = [row(to - hour, stat(10, 20, 30), { resolution: "hour", count: 3_600 })]
+    const tail = append(emptyTail("desktop", sevenDays), sample(to + 10 * minute, 40), sample(to + 20 * minute, 60))
 
-    expect(cpu(mergeSeries(history, tail))).toEqual([[to, stat(10, 25, 40)]])
+    expect(cpu(mergeSeries(history, tail))).toEqual([
+      [to - hour, stat(10, 20, 30)],
+      [to, stat(40, 50, 60)],
+    ])
+  })
+
+  it("averages each tail metric over the samples that report it", () => {
+    const tail = append(
+      emptyTail("desktop", oneHour),
+      sample(to + 1_000, 10, tctl(50)),
+      sample(to + 2_000, 20, []),
+      sample(to + 3_000, 30, tctl(90)),
+    )
+    const [point] = mergeSeries([], tail).points
+
+    expect(point?.stats.get("temp/k10temp/Tctl")).toEqual(stat(50, 70, 90))
+    expect(point?.stats.get("cpu")).toEqual(stat(10, 20, 30))
+  })
+
+  it("marks only the first tail bucket partial", () => {
+    const tail = append(emptyTail("desktop", oneHour), sample(to + 30_000, 10), sample(to + 40_000, 20), sample(to + minute, 30))
+    const series = mergeSeries([row(to - minute, stat(1, 2, 3))], tail)
+
+    expect(series.points.map(({ at, partial }) => [at, partial])).toEqual([
+      [to - minute, false],
+      [to, true],
+      [to + minute, false],
+    ])
+    expect(bandPoints(series, "cpu").map(({ partial }) => partial)).toEqual([false, true, false])
+  })
+
+  it("lists the metrics of visible rows and tail buckets, newest totals first", () => {
+    const history = [
+      row(oneHour.from - minute, stat(1, 1, 1), { temps: [{ chip: "old", label: "gone", celsius: stat(1, 1, 1) }] }),
+      row(to - 2 * minute, stat(1, 1, 1), { temps: [{ chip: "nvme", label: "Composite", celsius: stat(40, 41, 42) }] }),
+    ]
+    const tail = append(emptyTail("desktop", oneHour), { ...sample(to, 10), memory: { ...sample(to, 10).memory, totalBytes: 200 } })
+    const { metrics } = mergeSeries(history, tail)
+
+    expect([...metrics.keys()]).toEqual(["cpu", "memory", "load1", "temp/nvme/Composite", "temp/k10temp/Tctl"])
+    expect(metrics.get("memory")).toEqual({ kind: "memory", totalBytes: 200 })
   })
 
   it("ignores duplicate and late samples", () => {
@@ -116,7 +162,7 @@ describe("mergeSeries", () => {
     const tail = append(emptyTail("desktop", oneHour), ...samples)
     const series = mergeSeries(history, tail)
 
-    expect(tail.points).toHaveLength(60)
+    expect(tail.buckets).toHaveLength(60)
     expect(series.to).toBe(to + 90 * minute)
     expect(series.from).toBe(to + 30 * minute)
     expect(series.points).toHaveLength(60)
@@ -129,9 +175,9 @@ describe("bandPoints", () => {
     const series = mergeSeries([row(to - 5 * minute, stat(1, 2, 3)), row(to - 2 * minute, stat(4, 5, 6))], emptyTail("desktop", oneHour))
 
     expect(bandPoints(series, "cpu")).toEqual([
-      { at: to - 5 * minute, avg: 2, band: [1, 3] },
-      { at: to - 4 * minute, avg: null, band: null },
-      { at: to - 2 * minute, avg: 5, band: [4, 6] },
+      { at: to - 5 * minute, avg: 2, band: [1, 3], partial: false },
+      { at: to - 4 * minute, avg: null, band: null, partial: false },
+      { at: to - 2 * minute, avg: 5, band: [4, 6], partial: false },
     ])
   })
 })

@@ -96,8 +96,9 @@ const row = (template: Sample, host: string, at: EpochMillis, resolution: RangeW
 
 /**
  * Deterministic aggregate rows shaped like `template` (same cores, sensors,
- * disks and GPUs), one per bucket start in `[from, to)` of `window` and at or
- * before `lastAt`, so a host that stopped reporting has no newer rows.
+ * disks and GPUs), one per completed bucket in `[from, to)` of `window` that
+ * starts at or before `lastAt`, so a host that stopped reporting has no newer
+ * rows. A bucket that ends after `to` is still in progress and left out.
  */
 export const fixtureHistory = (
   template: Sample,
@@ -107,7 +108,7 @@ export const fixtureHistory = (
 ): ReadonlyArray<AggregateRow> => {
   const step = resolutionMs[window.resolution]
   const rows: Array<AggregateRow> = []
-  for (let at = Math.ceil(window.from / step) * step; at < window.to && at <= lastAt; at += step) {
+  for (let at = Math.ceil(window.from / step) * step; at + step <= window.to && at <= lastAt; at += step) {
     rows.push(row(template, host, at, window.resolution))
   }
   return rows

@@ -3,6 +3,7 @@ import { cleanup, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { HistoryQuery } from "../port"
+import { floorToResolution } from "../useFixedTo"
 import { createFixtureFeed } from "./fixtureFeed"
 import { vm } from "./hosts"
 
@@ -32,17 +33,24 @@ describe("fixture useHistory", () => {
     ["7d", "hour", 3_600_000, 168],
     ["30d", "hour", 3_600_000, 720],
   ] as const)("%s reads %s rows inside [from, to)", (range: HistoryRange, resolution, step, count) => {
-    const { from } = rangeWindow(range, to)
-    const rows = readHistory({ host: "desktop", range, to })
+    const rangeTo = floorToResolution(range, to)
+    const { from } = rangeWindow(range, rangeTo)
+    const rows = readHistory({ host: "desktop", range, to: rangeTo })
 
     expect(rows).toHaveLength(count)
     for (const [i, row] of rows.entries()) {
       expect(row.resolution).toBe(resolution)
       expect(row.at % step).toBe(0)
       expect(row.at).toBeGreaterThanOrEqual(from)
-      expect(row.at).toBeLessThan(to)
+      expect(row.at).toBeLessThan(rangeTo)
       if (i > 0) expect(row.at - (rows[i - 1]?.at ?? 0)).toBe(step)
     }
+  })
+
+  it("leaves out the bucket in progress at `to`", () => {
+    const rows = readHistory({ host: "desktop", range: "7d", to })
+
+    expect(rows.at(-1)?.at).toBe(floorToResolution("7d", to) - 3_600_000)
   })
 
   it("gives the same bucket the same values whatever the window", () => {

@@ -4,7 +4,7 @@ import { useState } from "react"
 
 import { useLive } from "~/feed/context"
 import type { FeedResult } from "~/feed/port"
-import { bandPoints, metricId, type MetricId, type Series } from "~/feed/series"
+import { bandPoints, idOf, resolutionMs, sampleEntries, type Metric, type MetricId, type Series } from "~/feed/series"
 import { useFixedTo } from "~/feed/useFixedTo"
 import { useHistorySeries } from "~/feed/useHistorySeries"
 
@@ -43,74 +43,80 @@ interface ChartFamily {
 
 const percent = (value: number) => `${formatPct(value)}%`
 
-/** The charts a host gets, from its latest sample. Families it does not report are left out. */
-export const chartFamilies = (sample: Sample): ReadonlyArray<ChartFamily> => {
-  const families: ReadonlyArray<ChartFamily> = [
-    { title: "CPU", hue: "cpu", options: [{ id: "cpu", label: "total", domain: [0, 100], format: percent }] },
-    {
-      title: "Memory",
-      hue: "memory",
-      options: [{ id: "memory", label: "used", domain: [0, sample.memory.totalBytes], format: formatBytes }],
-    },
-    { title: "Load", hue: "load", options: [{ id: "load1", label: "1m", domain: [0, "auto"], format: formatLoad }] },
-    {
-      title: "Temperatures",
-      hue: "temp",
-      options: sample.sensors.temps.map(({ chip, label }) => ({
-        id: metricId.temp(chip, label),
-        label,
-        group: chip,
-        domain: ["auto", "auto"],
-        format: formatCelsius,
-      })),
-    },
-    {
-      title: "Fans",
-      hue: "fan",
-      options: sample.sensors.fans.map(({ chip, label }) => ({
-        id: metricId.fan(chip, label),
-        label,
-        group: chip,
-        domain: [0, "auto"],
-        format: formatRpm,
-        axis: formatWhole,
-      })),
-    },
-    {
-      title: "Disks",
-      hue: "disk",
-      options: sample.disks.map(({ mount, totalBytes }) => ({
-        id: metricId.disk(mount),
-        label: mount,
-        domain: [0, totalBytes],
-        format: formatBytes,
-      })),
-    },
-    ...sample.gpus.map((gpu): ChartFamily => ({
-        title: `GPU ${gpu.index}`,
-        hue: "gpu",
-        options: [
-          { id: metricId.gpu(gpu.index, "utilization"), label: "utilization", domain: [0, 100], format: percent },
-          {
-            id: metricId.gpu(gpu.index, "memory"),
-            label: "memory",
-            domain: [0, gpu.memoryTotalBytes],
-            format: formatBytes,
-          },
-          ...(gpu.temperatureCelsius === undefined
-            ? []
-            : [
-                {
-                  id: metricId.gpu(gpu.index, "temperature"),
-                  label: "temperature",
-                  domain: ["auto", "auto"],
-                  format: formatCelsius,
-                } satisfies ChartOption,
-              ]),
-        ],
-      })),
-  ]
-  return families.filter((family) => family.options.length > 0)
+/** Where a metric is charted: its family, ordered by `order`, and its option there. */
+interface Placement {
+  readonly order: number
+  readonly title: string
+  readonly hue: Hue
+  readonly option: ChartOption
+}
+
+const placementOf = (metric: Metric): Placement => {
+  const id = idOf(metric)
+  switch (metric.kind) {
+    case "cpu":
+      return { order: 0, title: "CPU", hue: "cpu", option: { id, label: "total", domain: [0, 100], format: percent } }
+    case "memory":
+      return {
+        order: 1,
+        title: "Memory",
+        hue: "memory",
+        option: { id, label: "used", domain: [0, metric.totalBytes], format: formatBytes },
+      }
+    case "load1":
+      return { order: 2, title: "Load", hue: "load", option: { id, label: "1m", domain: [0, "auto"], format: formatLoad } }
+    case "temp":
+      return {
+        order: 3,
+        title: "Temperatures",
+        hue: "temp",
+        option: { id, label: metric.label, group: metric.chip, domain: ["auto", "auto"], format: formatCelsius },
+      }
+    case "fan":
+      return {
+        order: 4,
+        title: "Fans",
+        hue: "fan",
+        option: { id, label: metric.label, group: metric.chip, domain: [0, "auto"], format: formatRpm, axis: formatWhole },
+      }
+    case "disk":
+      return {
+        order: 5,
+        title: "Disks",
+        hue: "disk",
+        option: { id, label: metric.mount, domain: [0, metric.totalBytes], format: formatBytes },
+      }
+    case "gpu": {
+      const gpu = { order: 6 + metric.index, title: `GPU ${metric.index}`, hue: "gpu" } as const
+      switch (metric.field) {
+        case "utilization":
+          return { ...gpu, option: { id, label: "utilization", domain: [0, 100], format: percent } }
+        case "memory":
+          return { ...gpu, option: { id, label: "memory", domain: [0, metric.totalBytes ?? "auto"], format: formatBytes } }
+        case "temperature":
+          return { ...gpu, option: { id, label: "temperature", domain: ["auto", "auto"], format: formatCelsius } }
+      }
+    }
+  }
+}
+
+/**
+ * The charts a host gets: every metric in its latest sample or with a visible
+ * point in `series`, so a sensor that stops reporting keeps its chart while its
+ * history is in range. Current readings come first and set the totals.
+ * Families without a metric are left out.
+ */
+export const chartFamilies = (sample: Sample, series?: Series): ReadonlyArray<ChartFamily> => {
+  const metrics = new Map(sampleEntries(sample).map(([metric]) => [idOf(metric), metric] as const))
+  for (const [id, metric] of series?.metrics ?? []) if (!metrics.has(id)) metrics.set(id, metric)
+
+  const families = new Map<string, { readonly order: number; readonly family: ChartFamily }>()
+  for (const metric of metrics.values()) {
+    const { order, title, hue, option } = placementOf(metric)
+    const options = families.get(title)?.family.options ?? []
+    families.set(title, { order, family: { title, hue, options: [...options, option] } })
+  }
+  return [...families.values()].toSorted((a, b) => a.order - b.order).map(({ family }) => family)
 }
 
 const minute = 60_000
@@ -141,7 +147,7 @@ export const HistorySection = ({ host }: { readonly host: string }) => {
   const series = useHistorySeries(host, range, to)
 
   if (live._tag !== "Ready" || live.value === null) return null
-  const families = chartFamilies(live.value.sample)
+  const families = chartFamilies(live.value.sample, series._tag === "Ready" ? series.value : undefined)
 
   return (
     <section aria-label={`${host} history`} className="space-y-3">
@@ -241,6 +247,7 @@ const ChartBody = ({
       points={points}
       from={from}
       to={to}
+      step={resolutionMs[series.value.resolution]}
       ticks={timeTicks(from, to, axis.step)}
       hue={family.hue}
       domain={option.domain}
