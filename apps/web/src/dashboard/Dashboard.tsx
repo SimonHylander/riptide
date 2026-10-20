@@ -2,43 +2,90 @@ import { isOffline, type EpochMillis, type Sample } from "@riptide/domain"
 import { useState, type ReactNode } from "react"
 
 import { useHeartbeat, useHosts, useLive } from "~/feed/context"
-import type { FeedFailure, HostSummary, LiveSnapshot } from "~/feed/port"
+import type { FeedFailure, FeedResult, HostSummary, LiveSnapshot } from "~/feed/port"
 
+import { ErrorBoundary } from "./ErrorBoundary"
 import { formatAgo } from "./format"
 import { CpuTile, DisksTile, FansTile, GpuTile, LoadTile, MemoryTile, TempsTile, UptimeTile } from "./tiles"
-import { useIsOffline, useNow } from "./useNow"
+import { useNow } from "./useNow"
 
 /** The most recently updated host, the default selection. */
 export const mostRecentHost = (hosts: ReadonlyArray<HostSummary>): string | undefined =>
   hosts.reduce<HostSummary | undefined>((latest, host) => (latest && latest.updatedAt >= host.updatedAt ? latest : host), undefined)
     ?.host
 
-/** Live dashboard: host picker, then tiles for the selected host. Sends presence heartbeats while visible. */
-export const Dashboard = () => {
+/**
+ * Live dashboard: host picker, then tiles for the selected host. Sends presence heartbeats while visible.
+ * `account` goes on the right of the header, after the picker. Errors a feed throws show the unavailable notice with a retry.
+ */
+export const Dashboard = ({ account }: { readonly account?: ReactNode }) => (
+  <ErrorBoundary
+    fallback={(retry) => (
+      <Shell account={account}>
+        <div className="text-center">
+          <FailureNotice reason="unavailable" />
+          <button
+            type="button"
+            onClick={retry}
+            className="rounded-md border border-line px-3 py-1.5 text-xs text-muted transition-colors hover:text-ink"
+          >
+            Retry
+          </button>
+        </div>
+      </Shell>
+    )}
+  >
+    <LiveDashboard account={account} />
+  </ErrorBoundary>
+)
+
+const LiveDashboard = ({ account }: { readonly account: ReactNode }) => {
   useHeartbeat()
   const hosts = useHosts()
-  const [picked, setPicked] = useState<string>()
+  const [selected, select] = useSelectedHost(hosts)
 
-  if (hosts._tag === "Loading") return <Shell><Notice>Loading hosts…</Notice></Shell>
-  if (hosts._tag === "Failed") return <Shell><FailureNotice reason={hosts.reason} /></Shell>
-
-  const known = picked !== undefined && hosts.value.some(({ host }) => host === picked)
-  const selected = known ? picked : mostRecentHost(hosts.value)
-  if (selected === undefined) return <Shell><Notice>No host has reported yet.</Notice></Shell>
+  if (hosts._tag === "Loading") return <Shell account={account}><Notice>Loading hosts…</Notice></Shell>
+  if (hosts._tag === "Failed") return <Shell account={account}><FailureNotice reason={hosts.reason} /></Shell>
+  if (selected === undefined) return <Shell account={account}><Notice>No host has reported yet.</Notice></Shell>
 
   return (
-    <Shell picker={<HostPicker hosts={hosts.value} selected={selected} onSelect={setPicked} />}>
+    <Shell account={account} picker={<HostPicker hosts={hosts.value} selected={selected} onSelect={select} />}>
       <LiveSection key={selected} host={selected} />
       {/* History charts for `selected` go here, below the live tiles. */}
     </Shell>
   )
 }
 
-const Shell = ({ picker, children }: { readonly picker?: ReactNode; readonly children: ReactNode }) => (
+/**
+ * The selected host. Starts as the most recent host of the first Ready list and
+ * stays put when other hosts report, so the view only changes when the user
+ * picks a host or the selected one leaves the list (then the most recent again).
+ */
+const useSelectedHost = (hosts: FeedResult<ReadonlyArray<HostSummary>>) => {
+  const [selected, setSelected] = useState<string>()
+  if (hosts._tag !== "Ready") return [selected, setSelected] as const
+  const current = hosts.value.some(({ host }) => host === selected) ? selected : mostRecentHost(hosts.value)
+  // Updating state during render: React re-renders at once, before committing.
+  if (current !== selected) setSelected(current)
+  return [current, setSelected] as const
+}
+
+const Shell = ({
+  picker,
+  account,
+  children,
+}: {
+  readonly picker?: ReactNode
+  readonly account: ReactNode
+  readonly children: ReactNode
+}) => (
   <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4">
       <span className="text-xs font-semibold tracking-[0.3em] uppercase">Riptide</span>
-      {picker}
+      <div className="flex flex-wrap items-center gap-4">
+        {picker}
+        {account}
+      </div>
     </header>
     <main className="mt-6 space-y-8">{children}</main>
   </div>
@@ -60,43 +107,21 @@ const HostPicker = ({
   readonly onSelect: (host: string) => void
 }) => (
   <div role="radiogroup" aria-label="Host" className="flex flex-wrap gap-1">
-    {hosts.map((summary) => (
-      <HostOption key={summary.host} summary={summary} checked={summary.host === selected} onSelect={onSelect} />
+    {hosts.map(({ host }) => (
+      <button
+        key={host}
+        type="button"
+        role="radio"
+        aria-checked={host === selected}
+        onClick={() => onSelect(host)}
+        className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+          host === selected ? "border-line bg-panel text-ink" : "border-transparent text-muted hover:text-ink"
+        }`}
+      >
+        {host}
+      </button>
     ))}
   </div>
-)
-
-const HostOption = ({
-  summary,
-  checked,
-  onSelect,
-}: {
-  readonly summary: HostSummary
-  readonly checked: boolean
-  readonly onSelect: (host: string) => void
-}) => {
-  const offline = useIsOffline(summary.updatedAt)
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={checked}
-      onClick={() => onSelect(summary.host)}
-      className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs transition-colors ${
-        checked ? "border-line bg-panel text-ink" : "border-transparent text-muted hover:text-ink"
-      }`}
-    >
-      <StatusDot offline={offline} />
-      {summary.host}
-    </button>
-  )
-}
-
-const StatusDot = ({ offline }: { readonly offline: boolean | null }) => (
-  <span
-    aria-hidden
-    className={`size-1.5 rounded-full ${offline === null ? "bg-line" : offline ? "bg-crit" : "bg-ok"}`}
-  />
 )
 
 /** Live tiles for one host, with its online/offline state. */

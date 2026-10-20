@@ -1,21 +1,48 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it } from "vitest"
+import { useSyncExternalStore } from "react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { FeedProvider } from "~/feed/context"
 import { createFixtureFeed } from "~/feed/fixture/fixtureFeed"
+import { FeedResult, type HostSummary, type MetricsFeed } from "~/feed/port"
 
 import { Dashboard } from "./Dashboard"
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
-const renderDashboard = () =>
+const renderDashboard = (feed: MetricsFeed = createFixtureFeed({ onHeartbeat: () => {} })) =>
   render(
-    <FeedProvider feed={createFixtureFeed({ onHeartbeat: () => {} })}>
+    <FeedProvider feed={feed}>
       <Dashboard />
     </FeedProvider>,
   )
 
 const tile = (name: string) => screen.queryByRole("region", { name })
+
+const checkedHost = () => screen.getAllByRole("radio").find((radio) => radio.getAttribute("aria-checked") === "true")?.textContent
+
+/** The fixture feed with a host list the test controls. */
+const withHosts = (initial: ReadonlyArray<HostSummary>) => {
+  let hosts = initial
+  const listeners = new Set<() => void>()
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+  const feed: MetricsFeed = {
+    ...createFixtureFeed({ onHeartbeat: () => {} }),
+    useHosts: () => FeedResult.ready(useSyncExternalStore(subscribe, () => hosts)),
+  }
+  const setHosts = (next: ReadonlyArray<HostSummary>) =>
+    act(() => {
+      hosts = next
+      for (const listener of listeners) listener()
+    })
+  return { feed, setHosts }
+}
 
 describe("Dashboard", () => {
   it("defaults to the most recent host and renders every tile it reports", () => {
@@ -41,5 +68,52 @@ describe("Dashboard", () => {
       expect(tile(name), name).toBeNull()
     }
     expect(screen.getByText("Offline")).not.toBeNull()
+  })
+
+  it("keeps the default host when another host reports more recently", () => {
+    const { feed, setHosts } = withHosts([
+      { host: "desktop", updatedAt: 2_000 },
+      { host: "vm", updatedAt: 1_000 },
+    ])
+    renderDashboard(feed)
+    expect(checkedHost()).toBe("desktop")
+
+    setHosts([
+      { host: "desktop", updatedAt: 2_000 },
+      { host: "vm", updatedAt: 3_000 },
+    ])
+
+    expect(checkedHost()).toBe("desktop")
+  })
+
+  it("falls back to the most recent host when the selected one leaves the list", () => {
+    const { feed, setHosts } = withHosts([
+      { host: "desktop", updatedAt: 2_000 },
+      { host: "vm", updatedAt: 1_000 },
+    ])
+    renderDashboard(feed)
+
+    setHosts([{ host: "vm", updatedAt: 1_000 }])
+
+    expect(checkedHost()).toBe("vm")
+  })
+
+  it("shows thrown feed errors as unavailable and recovers on retry", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const fixture = createFixtureFeed({ onHeartbeat: () => {} })
+    let fail = true
+    renderDashboard({
+      ...fixture,
+      useHosts: () => {
+        if (fail) throw new Error("network down")
+        return fixture.useHosts()
+      },
+    })
+    expect(screen.getByText("Metrics are unavailable right now.")).not.toBeNull()
+
+    fail = false
+    act(() => fireEvent.click(screen.getByRole("button", { name: "Retry" })))
+
+    expect(checkedHost()).toBe("desktop")
   })
 })
