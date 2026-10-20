@@ -18,6 +18,7 @@ export const layer = (options: { readonly url: string; readonly token: Redacted.
         (batch: ReportBatch) => client.mutation(refs.public.agent.report, { token: Redacted.value(options.token), ...batch }),
         Effect.catchTags({
           Unauthorized: (cause) => Effect.fail(new GatewayError({ reason: "Unauthorized", cause })),
+          InvalidBatch: (cause) => Effect.fail(new GatewayError({ reason: "Rejected", cause })),
           HttpClientError: (cause) => Effect.fail(new GatewayError({ reason: "Transport", cause })),
           SchemaError: (cause) => Effect.fail(new GatewayError({ reason: "Decode", cause })),
         }),

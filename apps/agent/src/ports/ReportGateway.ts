@@ -3,10 +3,11 @@ import { Context, type Effect, Schema } from "effect"
 
 /**
  * Why a report failed. `Unauthorized` means the backend rejected the agent
- * token, `Transport` covers network and server errors, `Decode` a payload or
- * reply that did not match its schema.
+ * token, `Rejected` means it refused the batch itself (retrying will not help),
+ * `Transport` covers network and server errors, `Decode` a payload or reply
+ * that did not match its schema.
  */
-export const GatewayErrorReason = Schema.Literals(["Unauthorized", "Transport", "Decode"])
+export const GatewayErrorReason = Schema.Literals(["Unauthorized", "Rejected", "Transport", "Decode"])
 export type GatewayErrorReason = typeof GatewayErrorReason.Type
 
 /** A failed {@link ReportGateway.report} call. */
