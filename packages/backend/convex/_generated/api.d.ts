@@ -9,6 +9,9 @@
  */
 
 import type * as agent from "../agent.js";
+import type * as crons from "../crons.js";
+import type * as dashboard from "../dashboard.js";
+import type * as retention from "../retention.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +21,9 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   agent: typeof agent;
+  crons: typeof crons;
+  dashboard: typeof dashboard;
+  retention: typeof retention;
 }>;
 
 /**
