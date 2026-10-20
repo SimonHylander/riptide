@@ -1,9 +1,34 @@
 @import 'tailwindcss';
 
+/*
+ * Dashboard palette. One calm hue for magnitude (meters, bars), status hues
+ * only where a value crosses a threshold or a host goes offline. Every token
+ * resolves for light and dark through `light-dark()` and the OS color scheme.
+ */
+@theme {
+  --color-canvas: light-dark(#f3f4f1, #0b0d0f);
+  --color-panel: light-dark(#ffffff, #121518);
+  --color-line: light-dark(#e1e3dd, #22262a);
+  --color-track: light-dark(#eceee9, #1d2124);
+  --color-ink: light-dark(#17191b, #e3e6e2);
+  --color-muted: light-dark(#666c72, #858c92);
+  --color-meter: light-dark(#2d6e8c, #5aa6c6);
+  --color-ok: light-dark(#2f7d55, #59bd88);
+  --color-warn: light-dark(#a86a12, #e3a648);
+  --color-crit: light-dark(#bf3a30, #ef6b5f);
+
+  --font-mono: 'Berkeley Mono', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
 @layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
   html,
   body {
-    @apply text-gray-900 bg-gray-50 dark:bg-gray-950 dark:text-gray-200;
+    @apply bg-canvas text-ink font-mono antialiased;
+    font-variant-numeric: tabular-nums;
   }
 
   .using-mouse * {

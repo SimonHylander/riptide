@@ -6,6 +6,8 @@
 interface ImportMetaEnv {
   /** Convex deployment URL. Defaults to CONVEX_URL from packages/backend/.env.local. */
   readonly VITE_CONVEX_URL: string
+  /** MetricsFeed adapter, see `src/feed/selectFeed.ts`. Defaults to `fixture`. */
+  readonly VITE_FEED?: string
 }
 
 interface ImportMeta {

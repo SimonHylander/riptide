@@ -3,6 +3,10 @@ import { getAuth } from '@workos/authkit-tanstack-react-start'
 
 import { AccessGate } from '~/auth/AccessGate'
 import { SignOutButton } from '~/auth/SignOutButton'
+import { FeedProvider } from '~/feed/context'
+import { selectFeed } from '~/feed/selectFeed'
+
+const feed = selectFeed()
 
 /** Layout for every page except /sign-in and /callback. Signed-out visitors go to AuthKit and come back here. */
 export const Route = createFileRoute('/_authenticated')({
@@ -27,8 +31,11 @@ function AuthenticatedLayout() {
           <SignOutButton />
         </div>
       </header>
+      {/* Inside the gate, so feed reads and heartbeats only run for the allowed user. */}
       <AccessGate>
-        <Outlet />
+        <FeedProvider feed={feed}>
+          <Outlet />
+        </FeedProvider>
       </AccessGate>
     </>
   )
