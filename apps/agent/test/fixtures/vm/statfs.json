@@ -1,0 +1,5 @@
+{
+  "/": { "totalBytes": 29890060288, "usedBytes": 2463723520 },
+  "/boot": { "totalBytes": 924536832, "usedBytes": 116281344 },
+  "/boot/efi": { "totalBytes": 109422592, "usedBytes": 6324224 }
+}

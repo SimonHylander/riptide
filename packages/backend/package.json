@@ -1,0 +1,30 @@
+{
+  "name": "@riptide/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "codegen": "confect codegen",
+    "dev": "convex dev --start \"confect dev\"",
+    "push:dev": "confect codegen && convex dev --once",
+    "deploy": "confect codegen && convex deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@confect/core": "10.3.1",
+    "@confect/server": "10.3.1",
+    "@effect/platform-node": "4.0.5",
+    "@riptide/domain": "workspace:*",
+    "convex": "^1.45.0",
+    "effect": "4.0.5"
+  },
+  "devDependencies": {
+    "@confect/cli": "10.3.1",
+    "@confect/test": "10.3.1",
+    "convex-test": "0.0.62",
+    "vite": "^8.2.0"
+  },
+  "exports": {
+    "./confect/*": "./confect/*.ts"
+  }
+}

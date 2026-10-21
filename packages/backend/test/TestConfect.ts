@@ -1,0 +1,15 @@
+/// <reference types="vite/client" />
+
+import { TestConfect as TestConfect_ } from "@confect/test"
+
+import convexSchema from "../confect/_generated/convexSchema"
+import confectSchema from "../confect/_generated/schema"
+
+export const TestConfect = TestConfect_.TestConfect<typeof confectSchema>()
+
+/** In-memory Convex backend (convex-test) loaded with this package's schema and functions. */
+export const layer = TestConfect_.layer(
+  confectSchema,
+  convexSchema,
+  import.meta.glob("../convex/**/*.*s"),
+)

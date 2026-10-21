@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+/*
+ * Dashboard palette. One calm hue for magnitude (meters, bars), status hues
+ * only where a value crosses a threshold or a host goes offline. Every token
+ * resolves for light and dark through `light-dark()` and the OS color scheme.
+ */
+@theme {
+  --color-canvas: light-dark(#f3f4f1, #0b0d0f);
+  --color-panel: light-dark(#ffffff, #121518);
+  --color-line: light-dark(#e1e3dd, #22262a);
+  --color-track: light-dark(#eceee9, #1d2124);
+  --color-ink: light-dark(#17191b, #e3e6e2);
+  --color-muted: light-dark(#666c72, #858c92);
+  --color-meter: light-dark(#2d6e8c, #5aa6c6);
+  --color-ok: light-dark(#2f7d55, #59bd88);
+  --color-warn: light-dark(#a86a12, #e3a648);
+  --color-crit: light-dark(#bf3a30, #ef6b5f);
+
+  --font-mono: 'Berkeley Mono', 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/*
+ * History chart hues, one per metric family (see `Hue` in dashboard/charts).
+ * Kept clear of the status hues so a chart never reads as an alert. `static`
+ * because charts read them as `var()` in SVG, which Tailwind cannot see.
+ */
+@theme static {
+  --color-chart-cpu: light-dark(#2d6e8c, #5aa6c6);
+  --color-chart-memory: light-dark(#6a52b3, #a594ea);
+  --color-chart-load: light-dark(#1c7d77, #4cc3b9);
+  --color-chart-temp: light-dark(#b0427a, #e57aae);
+  --color-chart-fan: light-dark(#7a6a2f, #c8b26a);
+  --color-chart-disk: light-dark(#56708c, #93abc4);
+  --color-chart-gpu: light-dark(#4a55c4, #8d97f2);
+}
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  html,
+  body {
+    @apply bg-canvas text-ink font-mono antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .using-mouse * {
+    outline: none !important;
+  }
+}

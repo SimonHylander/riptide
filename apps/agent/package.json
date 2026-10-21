@@ -1,0 +1,20 @@
+{
+  "name": "@riptide/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "sample": "RIPTIDE_GATEWAY=stdout RIPTIDE_STDOUT_LAST_SEEN=now bun src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@confect/core": "10.3.1",
+    "@confect/js": "10.3.1",
+    "@effect/platform-bun": "4.0.5",
+    "@riptide/backend": "workspace:*",
+    "@riptide/domain": "workspace:*",
+    "convex": "^1.45.0",
+    "effect": "4.0.5"
+  }
+}
